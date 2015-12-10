@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <assert.h>
@@ -48,13 +62,14 @@ DrawState::DrawState( int s_width, int s_height )
     renditions( 0 ), save(),
     next_print_will_wrap( false ), origin_mode( false ), auto_wrap_mode( true ),
     insert_mode( false ), cursor_visible( true ), reverse_video( false ),
-    application_mode_cursor_keys( false )
+    bracketed_paste( false ), mouse_reporting_mode( MOUSE_REPORTING_NONE ), mouse_focus_event( false ),
+    mouse_alternate_scroll( false ), mouse_encoding_mode( MOUSE_ENCODING_DEFAULT ), application_mode_cursor_keys( false )
 {
   reinitialize_tabs( 0 );
 }
 
 Framebuffer::Framebuffer( int s_width, int s_height )
-  : rows( s_height, Row( s_width, 0 ) ), icon_name(), window_title(), bell_count( 0 ), ds( s_width, s_height )
+  : rows( s_height, Row( s_width, 0 ) ), icon_name(), window_title(), bell_count( 0 ), title_initialized( false ), ds( s_width, s_height )
 {
   assert( s_height > 0 );
   assert( s_width > 0 );
@@ -168,7 +183,7 @@ void DrawState::clear_tab( int col )
   tabs[ col ] = false;
 }
 
-int DrawState::get_next_tab( void )
+int DrawState::get_next_tab( void ) const
 {
   for ( int i = cursor_col + 1; i < width; i++ ) {
     if ( tabs[ i ] ) {
@@ -200,12 +215,12 @@ void DrawState::set_scrolling_region( int top, int bottom )
   }
 }
 
-int DrawState::limit_top( void )
+int DrawState::limit_top( void ) const
 {
   return origin_mode ? scrolling_region_top_row : 0;
 }
 
-int DrawState::limit_bottom( void )
+int DrawState::limit_bottom( void ) const
 {
   return origin_mode ? scrolling_region_bottom_row : height - 1;
 }
@@ -374,7 +389,7 @@ void DrawState::resize( int s_width, int s_height )
 }
 
 Renditions::Renditions( int s_background )
-  : bold( false ), underlined( false ), blink( false ),
+  : bold( false ), italic( false ), underlined( false ), blink( false ),
     inverse( false ), invisible( false ), foreground_color( 0 ),
     background_color( s_background )
 {}
@@ -383,7 +398,7 @@ Renditions::Renditions( int s_background )
 void Renditions::set_rendition( int num )
 {
   if ( num == 0 ) {
-    bold = underlined = blink = inverse = invisible = false;
+    bold = italic = underlined = blink = inverse = invisible = false;
     foreground_color = background_color = 0;
     return;
   }
@@ -412,6 +427,7 @@ void Renditions::set_rendition( int num )
 
   switch ( num ) {
   case 1: case 22: bold = (num == 1); break;
+  case 3: case 23: italic = (num == 3); break;
   case 4: case 24: underlined = (num == 4); break;
   case 5: case 25: blink = (num == 5); break;
   case 7: case 27: inverse = (num == 7); break;
@@ -439,6 +455,7 @@ std::string Renditions::sgr( void ) const
 
   ret.append( "\033[0" );
   if ( bold ) ret.append( ";1" );
+  if ( italic ) ret.append( ";3" );
   if ( underlined ) ret.append( ";4" );
   if ( blink ) ret.append( ";5" );
   if ( inverse ) ret.append( ";7" );
@@ -479,7 +496,7 @@ std::string Renditions::sgr( void ) const
 /* Reduce 256 "standard" colors to the 8 ANSI colors. */
 
 /* Terminal emulators generally agree on the (R',G',B') values of the
-   "standard" 256-color pallette beyond #15, but for the first 16
+   "standard" 256-color palette beyond #15, but for the first 16
    colors there is disagreement. Most terminal emulators are roughly
    self-consistent, except on Ubuntu's gnome-terminal where "ANSI
    blue" (#4) has been replaced with the aubergine system-wide
@@ -488,7 +505,7 @@ std::string Renditions::sgr( void ) const
 
    Terminal emulators that advertise "xterm" are inconsistent on the
    handling of initc to change the contents of a cell in the color
-   pallette. On RIS (reset to initial state) or choosing reset from
+   palette. On RIS (reset to initial state) or choosing reset from
    the user interface, xterm resets all entries, but gnome-terminal
    only resets entries beyond 16. (rxvt doesn't reset any entries,
    and Terminal.app ignores initc.) On initc, xterm applies changes
@@ -556,7 +573,7 @@ void Framebuffer::prefix_window_title( const std::deque<wchar_t> &s )
   }
 }
 
-wchar_t Cell::debug_contents( void ) const
+wint_t Cell::debug_contents( void ) const
 {
   if ( contents.empty() ) {
     return '_';

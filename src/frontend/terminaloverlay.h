@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef TERMINAL_OVERLAY_HPP
@@ -25,6 +39,8 @@
 #include "parser.h"
 
 #include <vector>
+#include <limits.h>
+#include <exception>
 
 namespace Overlay {
   using namespace Terminal;
@@ -129,9 +145,11 @@ namespace Overlay {
   private:
     uint64_t last_word_from_server;
     uint64_t last_acked_state;
+    string escape_key_string;
     wstring message;
     bool message_is_network_exception;
     uint64_t message_expiration;
+    bool show_quit_keystroke;
 
     bool server_late( uint64_t ts ) const { return (ts - last_word_from_server) > 6500; }
     bool reply_late( uint64_t ts ) const { return (ts - last_acked_state) > 10000; }
@@ -145,7 +163,7 @@ namespace Overlay {
     void server_acked( uint64_t s_last_acked ) { last_acked_state = s_last_acked; }
     int wait_time( void ) const;
 
-    void set_notification_string( const wstring &s_message, bool permanent = false )
+    void set_notification_string( const wstring &s_message, bool permanent = false, bool s_show_quit_keystroke = true )
     {
       message = s_message;
       if ( permanent ) {
@@ -154,12 +172,20 @@ namespace Overlay {
         message_expiration = timestamp() + 1000;
       }
       message_is_network_exception = false;
+      show_quit_keystroke = s_show_quit_keystroke;
     }
 
-    void set_network_exception( const NetworkException &e )
+    void set_escape_key_string( const string &s_name )
+    {
+      char tmp[ 128 ];
+      snprintf( tmp, sizeof tmp, " [To quit: %s .]", s_name.c_str() );
+      escape_key_string = tmp;
+    }
+
+    void set_network_exception( const std::exception &e )
     {
       wchar_t tmp[ 128 ];
-      swprintf( tmp, 128, L"%s: %s", e.function.c_str(), strerror( e.the_errno ) );
+      swprintf( tmp, 128, L"%s", e.what() );
 
       message = tmp;
       message_is_network_exception = true;
@@ -169,7 +195,7 @@ namespace Overlay {
     void clear_network_exception()
     {
       if ( message_is_network_exception ) {
-        set_notification_string( wstring( L"" ) );
+	message_expiration = std::min( message_expiration, timestamp() + 1000 );
       }
     }
 
@@ -231,7 +257,8 @@ namespace Overlay {
     enum DisplayPreference {
       Always,
       Never,
-      Adaptive
+      Adaptive,
+      Experimental
     };
 
   private:

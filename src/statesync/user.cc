@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <assert.h>
@@ -29,9 +43,15 @@ using namespace ClientBuffers;
 
 void UserStream::subtract( const UserStream *prefix )
 {
+  // if we are subtracting ourself from ourself, just clear the deque
+  if ( this == prefix ) {
+    actions.clear();
+    return;
+  }
   for ( deque<UserEvent>::const_iterator i = prefix->actions.begin();
 	i != prefix->actions.end();
 	i++ ) {
+    assert( this != prefix );
     assert( !actions.empty() );
     assert( *i == actions.front() );
     actions.pop_front();
@@ -103,7 +123,7 @@ void UserStream::apply_string( string diff )
   }
 }
 
-const Parser::Action *UserStream::get_action( unsigned int i )
+const Parser::Action *UserStream::get_action( unsigned int i ) const
 {
   switch( actions[ i ].type ) {
   case UserByteType:

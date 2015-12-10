@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 /* Test suite for the OCB-AES reference implementation included with Mosh.
@@ -39,28 +53,28 @@
 
 using Crypto::AlignedBuffer;
 
-bool verbose = true;
+bool verbose = false;
 
-bool equal( const AlignedBuffer &a, const AlignedBuffer &b ) {
+static bool equal( const AlignedBuffer &a, const AlignedBuffer &b ) {
   return ( a.len() == b.len() )
     && !memcmp( a.data(), b.data(), a.len() );
 }
 
-AlignedBuffer *get_ctx( const AlignedBuffer &key ) {
+static AlignedBuffer *get_ctx( const AlignedBuffer &key ) {
   AlignedBuffer *ctx_buf = new AlignedBuffer( ae_ctx_sizeof() );
   fatal_assert( ctx_buf );
   fatal_assert( AE_SUCCESS == ae_init( (ae_ctx *)ctx_buf->data(), key.data(), key.len(), NONCE_LEN, TAG_LEN ) );
   return ctx_buf;
 }
 
-void scrap_ctx( AlignedBuffer *ctx_buf ) {
+static void scrap_ctx( AlignedBuffer *ctx_buf ) {
   fatal_assert( AE_SUCCESS == ae_clear( (ae_ctx *)ctx_buf->data() ) );
   delete ctx_buf;
 }
 
-void test_encrypt( const AlignedBuffer &key, const AlignedBuffer &nonce,
-                   const AlignedBuffer &plaintext, const AlignedBuffer &assoc,
-                   const AlignedBuffer &expected_ciphertext ) {
+static void test_encrypt( const AlignedBuffer &key, const AlignedBuffer &nonce,
+			  const AlignedBuffer &plaintext, const AlignedBuffer &assoc,
+			  const AlignedBuffer &expected_ciphertext ) {
   AlignedBuffer *ctx_buf = get_ctx( key );
   ae_ctx *ctx = (ae_ctx *)ctx_buf->data();
 
@@ -83,10 +97,10 @@ void test_encrypt( const AlignedBuffer &key, const AlignedBuffer &nonce,
   scrap_ctx( ctx_buf );
 }
 
-void test_decrypt( const AlignedBuffer &key, const AlignedBuffer &nonce,
-                   const AlignedBuffer &ciphertext, const AlignedBuffer &assoc,
-                   const AlignedBuffer &expected_plaintext,
-                   bool valid ) {
+static void test_decrypt( const AlignedBuffer &key, const AlignedBuffer &nonce,
+			  const AlignedBuffer &ciphertext, const AlignedBuffer &assoc,
+			  const AlignedBuffer &expected_plaintext,
+			  bool valid ) {
   AlignedBuffer *ctx_buf = get_ctx( key );
   ae_ctx *ctx = (ae_ctx *)ctx_buf->data();
 
@@ -115,10 +129,10 @@ void test_decrypt( const AlignedBuffer &key, const AlignedBuffer &nonce,
   scrap_ctx( ctx_buf );
 }
 
-void test_vector( const char *key_p, const char *nonce_p,
-                  size_t assoc_len,      const char *assoc_p,
-                  size_t plaintext_len,  const char *plaintext_p,
-                  size_t ciphertext_len, const char *ciphertext_p ) {
+static void test_vector( const char *key_p, const char *nonce_p,
+			 size_t assoc_len,      const char *assoc_p,
+			 size_t plaintext_len,  const char *plaintext_p,
+			 size_t ciphertext_len, const char *ciphertext_p ) {
 
   AlignedBuffer key       ( KEY_LEN,        key_p );
   AlignedBuffer nonce     ( NONCE_LEN,      nonce_p );
@@ -158,7 +172,7 @@ void test_vector( const char *key_p, const char *nonce_p,
 #define TEST_VECTOR( _key, _nonce, _assoc, _pt, _ct ) \
   test_vector( _key, _nonce, sizeof(_assoc)-1, _assoc, sizeof(_pt)-1, _pt, sizeof(_ct)-1, _ct )
 
-void test_all_vectors( void ) {
+static void test_all_vectors( void ) {
   /* Test vectors from http://tools.ietf.org/html/draft-krovetz-ocb-03#appendix-A */
 
   const char ietf_key[] = "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
@@ -449,7 +463,7 @@ void test_all_vectors( void ) {
 /* http://tools.ietf.org/html/draft-krovetz-ocb-03#appendix-A
    also specifies an iterative test algorithm, which we implement here. */
 
-void test_iterative( void ) {
+static void test_iterative( void ) {
   /* Key is always all zeros */
   AlignedBuffer key( KEY_LEN );
   memset( key.data(), 0, KEY_LEN );
@@ -526,8 +540,8 @@ void test_iterative( void ) {
 
 int main( int argc, char *argv[] )
 {
-  if ( ( argc >= 2 ) && !strcmp( argv[ 1 ], "-q" ) ) {
-    verbose = false;
+  if ( argc >= 2 && strcmp( argv[ 1 ], "-v" ) == 0 ) {
+    verbose = true;
   }
 
   test_all_vectors();

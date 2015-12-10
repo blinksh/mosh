@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef TERMINALDISPATCHER_HPP
@@ -77,6 +91,9 @@ namespace Terminal {
     void parse_params( void );
 
   public:
+    static const int PARAM_MAX = 65535;
+    /* prevent evil escape sequences from causing long loops */
+
     std::string terminal_to_host; /* this is the reply string */
 
     Dispatcher();
@@ -90,8 +107,8 @@ namespace Terminal {
     std::string str( void );
 
     void dispatch( Function_Type type, const Parser::Action *act, Framebuffer *fb );
-    std::string get_dispatch_chars( void ) { return dispatch_chars; }
-    std::vector<wchar_t> get_OSC_string( void ) { return OSC_string; }
+    std::string get_dispatch_chars( void ) const { return dispatch_chars; }
+    std::vector<wchar_t> get_OSC_string( void ) const { return OSC_string; }
 
     void OSC_put( const Parser::OSC_Put *act );
     void OSC_start( const Parser::OSC_Start *act );

@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef STM_CLIENT_HPP
@@ -31,12 +45,17 @@
 class STMClient {
 private:
   std::string ip;
-  int port;
+  std::string port;
   std::string key;
+
+  int escape_key;
+  int escape_pass_key;
+  int escape_pass_key2;
+  bool escape_requires_lf;
+  std::wstring escape_key_help;
 
   struct termios saved_termios, raw_termios;
 
-  int signal_fd;
   struct winsize window_size;
 
   Terminal::Framebuffer *local_framebuffer, *new_state;
@@ -45,27 +64,30 @@ private:
   Terminal::Display display;
 
   std::wstring connecting_notification;
-  bool repaint_requested, quit_sequence_started;
+  bool repaint_requested, lf_entered, quit_sequence_started;
   bool clean_shutdown;
 
   void main_init( void );
-  bool process_network_input( void );
+  void process_network_input( void );
   bool process_user_input( int fd );
   bool process_resize( void );
 
   void output_new_frame( void );
 
-  bool still_connecting( void )
+  bool still_connecting( void ) const
   {
     /* Initially, network == NULL */
     return network && ( network->get_remote_state_num() == 0 );
   }
 
+  void resume( void ); /* restore state after SIGCONT */
+
 public:
-  STMClient( const char *s_ip, int s_port, const char *s_key, const char *predict_mode )
+  STMClient( const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
     : ip( s_ip ), port( s_port ), key( s_key ),
+    escape_key( 0x1E ), escape_pass_key( '^' ), escape_pass_key2( '^' ),
+    escape_requires_lf( false ), escape_key_help( L"?" ),
       saved_termios(), raw_termios(),
-      signal_fd(),
       window_size(),
       local_framebuffer( NULL ),
       new_state( NULL ),
@@ -74,6 +96,7 @@ public:
       display( true ), /* use TERM environment var to initialize display */
       connecting_notification(),
       repaint_requested( false ),
+      lf_entered( false ),
       quit_sequence_started( false ),
       clean_shutdown( false )
   {
@@ -84,6 +107,8 @@ public:
 	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Never );
       } else if ( !strcmp( predict_mode, "adaptive" ) ) {
 	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Adaptive );
+      } else if ( !strcmp( predict_mode, "experimental" ) ) {
+	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Experimental );
       } else {
 	fprintf( stderr, "Unknown prediction mode %s.\n", predict_mode );
 	exit( 1 );
@@ -93,7 +118,7 @@ public:
 
   void init( void );
   void shutdown( void );
-  void main( void );
+  bool main( void );
 
   ~STMClient()
   {

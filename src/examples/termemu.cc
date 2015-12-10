@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include "config.h"
@@ -23,7 +37,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
-#include <sys/poll.h>
 #include <string.h>
 #include <locale.h>
 #include <wchar.h>
@@ -38,30 +51,29 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <sys/time.h>
+#include <exception>
 
 #if HAVE_PTY_H
 #include <pty.h>
 #elif HAVE_UTIL_H
 #include <util.h>
+#elif HAVE_LIBUTIL_H
+#include <libutil.h>
 #endif
 
 #include "parser.h"
 #include "completeterminal.h"
 #include "swrite.h"
 #include "fatal_assert.h"
+#include "pty_compat.h"
 #include "locale_utils.h"
-#include "sigfd.h"
-
-/* For newer skalibs */
-extern "C" {
-  const char *PROG = "termemu";
-}
+#include "select.h"
 
 const size_t buf_size = 16384;
 
-void emulate_terminal( int fd );
+static void emulate_terminal( int fd );
 
-int main( void )
+int main( int argc, char *argv[] )
 {
   int master;
   struct termios saved_termios, raw_termios, child_termios;
@@ -105,19 +117,26 @@ int main( void )
       exit( 1 );
     }
 
-    /* get shell name */
-    struct passwd *pw = getpwuid( geteuid() );
-    if ( pw == NULL ) {
-      perror( "getpwuid" );
-      exit( 1 );
-    }
-
     char *my_argv[ 2 ];
-    my_argv[ 0 ] = strdup( pw->pw_shell );
-    assert( my_argv[ 0 ] );
-    my_argv[ 1 ] = NULL;
 
-    if ( execv( pw->pw_shell, my_argv ) < 0 ) {
+    if ( argc > 1 ) {
+      argv++;
+    } else {
+      /* get shell name */
+      my_argv[ 0 ] = getenv( "SHELL" );
+      if ( my_argv[ 0 ] == NULL || *my_argv[ 0 ] == '\0' ) {
+	struct passwd *pw = getpwuid( geteuid() );
+	if ( pw == NULL ) {
+	  perror( "getpwuid" );
+	  exit( 1 );
+	}
+	my_argv[ 0 ] = strdup( pw->pw_shell );
+      }
+      assert( my_argv[ 0 ] );
+      my_argv[ 1 ] = NULL;
+      argv = my_argv;
+    }
+    if ( execvp( argv[ 0 ], argv ) < 0 ) {
       perror( "execve" );
       exit( 1 );
     }
@@ -133,7 +152,11 @@ int main( void )
       exit( 1 );
     }
 
-    emulate_terminal( master );
+    try {
+      emulate_terminal( master );
+    } catch ( const std::exception &e ) {
+      fprintf( stderr, "\r\nException caught: %s\r\n", e.what() );
+    }
 
     if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
       perror( "tcsetattr" );
@@ -147,8 +170,8 @@ int main( void )
 }
 
 /* Print a frame if the last frame was more than 1/50 seconds ago */
-bool tick( Terminal::Framebuffer &state, Terminal::Framebuffer &new_frame,
-	   const Terminal::Display &display )
+static bool tick( Terminal::Framebuffer &state, Terminal::Framebuffer &new_frame,
+		  const Terminal::Display &display )
 {
   static bool initialized = false;
   static struct timeval last_time;
@@ -190,23 +213,14 @@ bool tick( Terminal::Framebuffer &state, Terminal::Framebuffer &new_frame,
    3. Resize events (from a SIGWINCH signal) get turned into
       "Resize" actions and applied to the terminal.
 
-   At every event from poll(), we run the tick() function to
+   At every event from select(), we run the tick() function to
    possibly print a new frame (if we haven't printed one in the
    last 1/50 second). The new frames are "differential" -- they
    assume the previous frame was sent to the real terminal.
 */
 
-void emulate_terminal( int fd )
+static void emulate_terminal( int fd )
 {
-  /* establish WINCH fd and start listening for signal */
-  int signal_fd = sigfd_init();
-  if ( signal_fd < 0 ) {
-    perror( "sigfd_init" );
-    return;
-  }
-
-  fatal_assert( sigfd_trap(SIGWINCH) == 0 );
-
   /* get current window size */
   struct winsize window_size;
   if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
@@ -227,36 +241,28 @@ void emulate_terminal( int fd )
   /* open display */
   Terminal::Display display( true ); /* use TERM to initialize */
 
-  struct pollfd pollfds[ 3 ];
+  Select &sel = Select::get_instance();
+  sel.add_fd( STDIN_FILENO );
+  sel.add_fd( fd );
+  sel.add_signal( SIGWINCH );
 
-  pollfds[ 0 ].fd = STDIN_FILENO;
-  pollfds[ 0 ].events = POLLIN;
+  swrite( STDOUT_FILENO, display.open().c_str() );
 
-  pollfds[ 1 ].fd = fd;
-  pollfds[ 1 ].events = POLLIN;
-
-  pollfds[ 2 ].fd = signal_fd;
-  pollfds[ 2 ].events = POLLIN;
-
-  swrite( STDOUT_FILENO, Terminal::Emulator::open().c_str() );
-
-  int poll_timeout = -1;
+  int timeout = -1;
 
   while ( 1 ) {
-    int active_fds = poll( pollfds, 3, poll_timeout );
-    if ( active_fds < 0 && errno == EINTR ) {
-      continue;
-    } else if ( active_fds < 0 ) {
-      perror( "poll" );
+    int active_fds = sel.select( timeout );
+    if ( active_fds < 0 ) {
+      perror( "select" );
       break;
     }
 
-    if ( pollfds[ 0 ].revents & POLLIN ) {
+    if ( sel.read( STDIN_FILENO ) ) {
       /* input from user */
       char buf[ buf_size ];
 
       /* fill buffer if possible */
-      ssize_t bytes_read = read( pollfds[ 0 ].fd, buf, buf_size );
+      ssize_t bytes_read = read( STDIN_FILENO, buf, buf_size );
       if ( bytes_read == 0 ) { /* EOF */
 	return;
       } else if ( bytes_read < 0 ) {
@@ -274,12 +280,12 @@ void emulate_terminal( int fd )
       if ( swrite( fd, terminal_to_host.c_str(), terminal_to_host.length() ) < 0 ) {
 	break;
       }
-    } else if ( pollfds[ 1 ].revents & POLLIN ) {
+    } else if ( sel.read( fd ) ) {
       /* input from host */
       char buf[ buf_size ];
 
       /* fill buffer if possible */
-      ssize_t bytes_read = read( pollfds[ 1 ].fd, buf, buf_size );
+      ssize_t bytes_read = read( fd, buf, buf_size );
       if ( bytes_read == 0 ) { /* EOF */
 	return;
       } else if ( bytes_read < 0 ) {
@@ -291,10 +297,7 @@ void emulate_terminal( int fd )
       if ( swrite( fd, terminal_to_host.c_str(), terminal_to_host.length() ) < 0 ) {
 	break;
       }
-    } else if ( pollfds[ 2 ].revents & POLLIN ) {
-      /* resize */
-      fatal_assert( sigfd_read() == SIGWINCH );
-
+    } else if ( sel.signal( SIGWINCH ) ) {
       /* get new size */
       if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
 	perror( "ioctl TIOCGWINSZ" );
@@ -310,22 +313,21 @@ void emulate_terminal( int fd )
 	perror( "ioctl TIOCSWINSZ" );
 	return;
       }
-    } else if ( (pollfds[ 0 ].revents | pollfds[ 1 ].revents)
-		& (POLLERR | POLLHUP | POLLNVAL) ) {
+    } else if ( sel.error( STDIN_FILENO ) || sel.error( fd ) ) {
       break;
     }
 
     Terminal::Framebuffer new_frame( complete.get_fb() );
 
     if ( tick( state, new_frame, display ) ) { /* there was a frame */
-      poll_timeout = -1;
+      timeout = -1;
     } else {
-      poll_timeout = 20;
+      timeout = 20;
     }
   }
 
   std::string update = display.new_frame( true, state, complete.get_fb() );
   swrite( STDOUT_FILENO, update.c_str() );
 
-  swrite( STDOUT_FILENO, Terminal::Emulator::close().c_str() );
+  swrite( STDOUT_FILENO, display.close().c_str() );
 }

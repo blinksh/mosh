@@ -14,24 +14,83 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 /* This is in its own file because otherwise the ncurses #defines
    alias our own variable names. */
 
+#include "config.h"
 #include "terminaldisplay.h"
 
 #include <string>
+#include <stdexcept>
 
-#include <curses.h>
-#include <term.h>
+#if defined HAVE_NCURSESW_CURSES_H
+#  include <ncursesw/curses.h>
+#  include <ncursesw/term.h>
+#elif defined HAVE_NCURSESW_H
+#  include <ncursesw.h>
+#  include <term.h>
+#elif defined HAVE_NCURSES_CURSES_H
+#  include <ncurses/curses.h>
+#  include <ncurses/term.h>
+#elif defined HAVE_NCURSES_H
+#  include <ncurses.h>
+#  include <term.h>
+#elif defined HAVE_CURSES_H
+#  include <curses.h>
+#  include <term.h>
+#else
+#  error "SysV or X/Open-compatible Curses header file required"
+#endif
 #include <stdlib.h>
 #include <string.h>
 
 using namespace Terminal;
 
+bool Display::ti_flag( const char *capname )
+{
+  int val = tigetflag( const_cast<char *>( capname ) );
+  if ( val == -1 ) {
+    throw std::invalid_argument( std::string( "Invalid terminfo boolean capability " ) + capname );
+  }
+  return val;
+}
+
+int Display::ti_num( const char *capname )
+{
+  int val = tigetnum( const_cast<char *>( capname ) );
+  if ( val == -2 ) {
+    throw std::invalid_argument( std::string( "Invalid terminfo numeric capability " ) + capname );
+  }
+  return val;
+}
+
+const char *Display::ti_str( const char *capname )
+{
+  const char *val = tigetstr( const_cast<char *>( capname ) );
+  if ( val == (const char *)-1 ) {
+    throw std::invalid_argument( std::string( "Invalid terminfo string capability " ) + capname );
+  }
+  return val;
+}
+
 Display::Display( bool use_environment )
-  : has_ech( true ), has_bce( true ), has_title( true ), posterize_colors( false )
+  : has_ech( true ), has_bce( true ), has_title( true ), posterize_colors( false ), smcup( NULL ), rmcup( NULL )
 {
   if ( use_environment ) {
     int errret = -2;
@@ -40,37 +99,25 @@ Display::Display( bool use_environment )
     if ( ret != OK ) {
       switch ( errret ) {
       case 1:
-	throw std::string( "Terminal is hardcopy and cannot be used by curses applications." );
+	throw std::runtime_error( "Terminal is hardcopy and cannot be used by curses applications." );
 	break;
       case 0:
-	throw std::string( "Unknown terminal type." );
+	throw std::runtime_error( "Unknown terminal type." );
 	break;
       case -1:
-	throw std::string( "Terminfo database could not be found." );
+	throw std::runtime_error( "Terminfo database could not be found." );
 	break;
       default:
-	throw std::string( "Unknown terminfo error." );
+	throw std::runtime_error( "Unknown terminfo error." );
 	break;
       } 
     }
 
     /* check for ECH */
-    char ech_name[] = "ech";
-    char *val = tigetstr( ech_name );
-    if ( val == (char *)-1 ) {
-      throw std::string( "Invalid terminfo string capability " ) + ech_name;
-    } else if ( val == 0 ) {
-      has_ech = false;
-    }
+    has_ech = ti_str( "ech" );
 
     /* check for BCE */
-    char bce_name[] = "bce";
-    int bce_val = tigetflag( bce_name );
-    if ( bce_val == -1 ) {
-      throw std::string( "Invalid terminfo boolean capability " ) + bce_name;
-    } else if ( bce_val == 0 ) {
-      has_bce = false;
-    }
+    has_bce = ti_flag( "bce" );
 
     /* Check if we can set the window title and icon name.  terminfo does not
        have reliable information on this, so we hardcode a whitelist of
@@ -97,13 +144,12 @@ Display::Display( bool use_environment )
     /* posterization disabled because server now only advertises
        xterm-256color when client has colors = 256 */
     /*
-    char colors_name[] = "colors";
-    int color_val = tigetnum( colors_name );
-    if ( color_val == -2 ) {
-      throw std::string( "Invalid terminfo numeric capability " ) + colors_name;
-    } else if ( color_val < 256 ) {
-      posterize_colors = true;
-    }
+    posterize_colors = ti_num( "colors" ) < 256;
     */
+
+    if ( !getenv( "MOSH_NO_TERM_INIT" ) ) {
+      smcup = ti_str("smcup");
+      rmcup = ti_str("rmcup");
+    }
   }
 }

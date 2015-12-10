@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <algorithm>
@@ -24,6 +38,8 @@
 
 #include "transportsender.h"
 #include "transportfragment.h"
+
+#include <limits.h>
 
 using namespace Network;
 using namespace std;
@@ -40,6 +56,7 @@ TransportSender<MyState>::TransportSender( Connection *s_connection, MyState &in
     verbose( false ),
     shutdown_in_progress( false ),
     shutdown_tries( 0 ),
+    shutdown_start( -1 ),
     ack_num( 0 ),
     pending_data_ack( false ),
     SEND_MINDELAY( 8 ),
@@ -341,7 +358,15 @@ void TransportSender<MyState>::process_acknowledgment_through( uint64_t ack_num 
 template <class MyState>
 bool TransportSender<MyState>::shutdown_ack_timed_out( void ) const
 {
-  return shutdown_tries >= SHUTDOWN_RETRIES;
+  if ( shutdown_in_progress ) {
+    if ( shutdown_tries >= SHUTDOWN_RETRIES ) {
+      return true;
+    } else if ( timestamp() - shutdown_start >= uint64_t( ACTIVE_RETRY_TIMEOUT ) ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /* Executed upon entry to new receiver state */

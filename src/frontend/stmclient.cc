@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include "config.h"
@@ -24,7 +38,6 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/poll.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <pwd.h>
@@ -37,15 +50,32 @@
 #include <util.h>
 #endif
 
-#include "sigfd.h"
 #include "stmclient.h"
 #include "swrite.h"
 #include "completeterminal.h"
 #include "user.h"
 #include "fatal_assert.h"
 #include "locale_utils.h"
+#include "pty_compat.h"
+#include "select.h"
+#include "timestamp.h"
 
 #include "networktransport.cc"
+
+void STMClient::resume( void )
+{
+  /* Restore termios state */
+  if ( tcsetattr( STDIN_FILENO, TCSANOW, &raw_termios ) < 0 ) {
+      perror( "tcsetattr" );
+      exit( 1 );
+  }
+
+  /* Put terminal in application-cursor-key mode */
+  swrite( STDOUT_FILENO, display.open().c_str() );
+
+  /* Flag that outer terminal state is unknown */
+  repaint_requested = true;
+}
 
 void STMClient::init( void )
 {
@@ -54,7 +84,7 @@ void STMClient::init( void )
     string native_charset( locale_charset() );
 
     fprintf( stderr, "mosh-client needs a UTF-8 native locale to run.\n\n" );
-    fprintf( stderr, "Unfortunately, the client's environemnt (%s) specifies\nthe character set \"%s\".\n\n", native_ctype.str().c_str(), native_charset.c_str() );
+    fprintf( stderr, "Unfortunately, the client's environment (%s) specifies\nthe character set \"%s\".\n\n", native_ctype.str().c_str(), native_charset.c_str() );
     int unused __attribute((unused)) = system( "locale" );
     exit( 1 );
   }
@@ -84,15 +114,82 @@ void STMClient::init( void )
   }
 
   /* Put terminal in application-cursor-key mode */
-  swrite( STDOUT_FILENO, Terminal::Emulator::open().c_str() );
+  swrite( STDOUT_FILENO, display.open().c_str() );
 
   /* Add our name to window title */
   if ( !getenv( "MOSH_TITLE_NOPREFIX" ) ) {
     overlays.set_title_prefix( wstring( L"[mosh] " ) );
   }
 
+  /* Set terminal escape key. */
+  const char *escape_key_env;
+  if ( (escape_key_env = getenv( "MOSH_ESCAPE_KEY" )) != NULL ) {
+    if ( strlen( escape_key_env ) == 1 ) {
+      escape_key = (int)escape_key_env[0];
+      if ( escape_key > 0 && escape_key < 128 ) {
+	if ( escape_key < 32 ) {
+	  /* If escape is ctrl-something, pass it with repeating the key without ctrl. */
+	  escape_pass_key = escape_key + (int)'@';
+	} else {
+	  /* If escape is something else, pass it with repeating the key itself. */
+	  escape_pass_key = escape_key;
+	}
+	if ( escape_pass_key >= 'A' && escape_pass_key <= 'Z' ) {
+	  /* If escape pass is an upper case character, define optional version
+	     as lower case of the same. */
+	  escape_pass_key2 = escape_pass_key + (int)'a' - (int)'A';
+	} else {
+	  escape_pass_key2 = escape_pass_key;
+	}
+      } else {
+	escape_key = 0x1E;
+	escape_pass_key = '^';
+	escape_pass_key2 = '^';
+      }
+    } else if ( strlen( escape_key_env ) == 0 ) {
+      escape_key = -1;
+    } else {
+      escape_key = 0x1E;
+      escape_pass_key = '^';
+      escape_pass_key2 = '^';
+    }
+  } else {
+    escape_key = 0x1E;
+    escape_pass_key = '^';
+    escape_pass_key2 = '^';
+  }
+
+  /* There are so many better ways to shoot oneself into leg than
+     setting escape key to Ctrl-C, Ctrl-D, NewLine, Ctrl-L or CarriageReturn
+     that we just won't allow that. */
+  if ( escape_key == 0x03 || escape_key == 0x04 || escape_key == 0x0A || escape_key == 0x0C || escape_key == 0x0D ) {
+    escape_key = 0x1E;
+    escape_pass_key = '^';
+    escape_pass_key2 = '^';
+  }
+
+  /* Adjust escape help differently if escape is a control character. */
+  if ( escape_key > 0 ) {
+    char escape_pass_name_buf[16];
+    char escape_key_name_buf[16];
+    snprintf(escape_pass_name_buf, sizeof escape_pass_name_buf, "\"%c\"", escape_pass_key);
+    if (escape_key < 32) {
+      snprintf(escape_key_name_buf, sizeof escape_key_name_buf, "Ctrl-%c", escape_pass_key);
+      escape_requires_lf = false;
+    } else {
+      snprintf(escape_key_name_buf, sizeof escape_key_name_buf, "\"%c\"", escape_key);
+      escape_requires_lf = true;
+    }
+    string tmp;
+    tmp = string( escape_pass_name_buf );
+    wstring escape_pass_name = std::wstring(tmp.begin(), tmp.end());
+    tmp = string( escape_key_name_buf );
+    wstring escape_key_name = std::wstring(tmp.begin(), tmp.end());
+    escape_key_help = L"Commands: Ctrl-Z suspends, \".\" quits, " + escape_pass_name + L" gives literal " + escape_key_name;
+    overlays.get_notification_engine().set_escape_key_string( tmp );
+  }
   wchar_t tmp[ 128 ];
-  swprintf( tmp, 128, L"Nothing received from server on UDP port %d.", port );
+  swprintf( tmp, 128, L"Nothing received from server on UDP port %s.", port.c_str() );
   connecting_notification = wstring( tmp );
 }
 
@@ -105,7 +202,7 @@ void STMClient::shutdown( void )
   output_new_frame();
 
   /* Restore terminal and terminal-driver state */
-  swrite( STDOUT_FILENO, Terminal::Emulator::close().c_str() );
+  swrite( STDOUT_FILENO, display.close().c_str() );
   
   if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
     perror( "tcsetattr" );
@@ -113,8 +210,8 @@ void STMClient::shutdown( void )
   }
 
   if ( still_connecting() ) {
-    fprintf( stderr, "mosh did not make a successful connection to %s:%d.\n", ip.c_str(), port );
-    fprintf( stderr, "Please verify that UDP port %d is not firewalled and can reach the server.\n\n", port );
+    fprintf( stderr, "\nmosh did not make a successful connection to %s:%s.\n", ip.c_str(), port.c_str() );
+    fprintf( stderr, "Please verify that UDP port %s is not firewalled and can reach the server.\n\n", port.c_str() );
     fprintf( stderr, "(By default, mosh uses a UDP port between 60000 and 61000. The -p option\nselects a specific UDP port number.)\n" );
   } else if ( network ) {
     if ( !clean_shutdown ) {
@@ -125,20 +222,13 @@ void STMClient::shutdown( void )
 
 void STMClient::main_init( void )
 {
-  /* establish a fd for signals */
-  signal_fd = sigfd_init();
-  if ( signal_fd < 0 ) {
-    perror( "sigfd_init" );
-    return;
-  }
-
-  fatal_assert( sigfd_trap( SIGWINCH ) == 0 );
-  fatal_assert( sigfd_trap( SIGTERM ) == 0 );
-  fatal_assert( sigfd_trap( SIGINT ) == 0 );
-  fatal_assert( sigfd_trap( SIGHUP ) == 0 );
-  fatal_assert( sigfd_trap( SIGPIPE ) == 0 );
-  fatal_assert( sigfd_trap( SIGTSTP ) == 0 );
-  fatal_assert( sigfd_trap( SIGCONT ) == 0 );
+  Select &sel = Select::get_instance();
+  sel.add_signal( SIGWINCH );
+  sel.add_signal( SIGTERM );
+  sel.add_signal( SIGINT );
+  sel.add_signal( SIGHUP );
+  sel.add_signal( SIGPIPE );
+  sel.add_signal( SIGCONT );
 
   /* get initial window size */
   if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
@@ -158,7 +248,7 @@ void STMClient::main_init( void )
   Network::UserStream blank;
   Terminal::Complete local_terminal( window_size.ws_col, window_size.ws_row );
   network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal,
-									       key.c_str(), ip.c_str(), port );
+									       key.c_str(), ip.c_str(), port.c_str() );
 
   network->set_send_delay( 1 ); /* minimal delay on outgoing keystrokes */
 
@@ -195,7 +285,7 @@ void STMClient::output_new_frame( void )
   local_framebuffer = tmp;
 }
 
-bool STMClient::process_network_input( void )
+void STMClient::process_network_input( void )
 {
   network->recv();
   
@@ -206,8 +296,6 @@ bool STMClient::process_network_input( void )
   overlays.get_prediction_engine().set_local_frame_acked( network->get_sent_state_acked() );
   overlays.get_prediction_engine().set_send_interval( network->send_interval() );
   overlays.get_prediction_engine().set_local_frame_late_acked( network->get_latest_remote_state().state.get_echo_ack() );
-
-  return true;
 }
 
 bool STMClient::process_user_input( int fd )
@@ -241,23 +329,50 @@ bool STMClient::process_user_input( int fd )
 	  } else {
 	    return false;
 	  }
-	} else if ( the_byte == '^' ) {
-	  /* Emulation sequence to type Ctrl-^ is Ctrl-^ ^ */
-	  network->get_current_state().push_back( Parser::UserByte( 0x1E ) );
+	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
+	  /* Restore terminal and terminal-driver state */
+	  swrite( STDOUT_FILENO, display.close().c_str() );
+
+	  if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
+	    perror( "tcsetattr" );
+	    exit( 1 );
+	  }
+
+	  printf( "\n\033[37;44m[mosh is suspended.]\033[m\n" );
+
+	  fflush( NULL );
+
+	  /* actually suspend */
+	  kill( 0, SIGSTOP );
+
+	  resume();
+	} else if ( (the_byte == escape_pass_key) || (the_byte == escape_pass_key2) ) {
+	  /* Emulation sequence to type escape_key is escape_key +
+	     escape_pass_key (that is escape key without Ctrl) */
+	  network->get_current_state().push_back( Parser::UserByte( escape_key ) );
 	} else {
-	  /* Ctrl-^ followed by anything other than . and ^ gets sent literally */
-	  network->get_current_state().push_back( Parser::UserByte( 0x1E ) );
+	  /* Escape key followed by anything other than . and ^ gets sent literally */
+	  network->get_current_state().push_back( Parser::UserByte( escape_key ) );
 	  network->get_current_state().push_back( Parser::UserByte( the_byte ) );	  
 	}
 
 	quit_sequence_started = false;
+
+	if ( overlays.get_notification_engine().get_notification_string() == escape_key_help ) {
+	  overlays.get_notification_engine().set_notification_string( L"" );
+	}
+
 	continue;
       }
 
-      quit_sequence_started = (the_byte == 0x1E);
+      quit_sequence_started = (escape_key > 0) && (the_byte == escape_key) && (lf_entered || (! escape_requires_lf));
       if ( quit_sequence_started ) {
+	lf_entered = false;
+	overlays.get_notification_engine().set_notification_string( escape_key_help, true, false );
 	continue;
       }
+
+      lf_entered = ( (the_byte == 0x0A) || (the_byte == 0x0D) ); /* LineFeed, Ctrl-J, '\n' or CarriageReturn, Ctrl-M, '\r' */
 
       if ( the_byte == 0x0C ) { /* Ctrl-L */
 	repaint_requested = true;
@@ -293,22 +408,13 @@ bool STMClient::process_resize( void )
   return true;
 }
 
-void STMClient::main( void )
+bool STMClient::main( void )
 {
   /* initialize signal handling and structures */
   main_init();
 
   /* prepare to poll for events */
-  struct pollfd pollfds[ 3 ];
-
-  pollfds[ 0 ].fd = network->fd();
-  pollfds[ 0 ].events = POLLIN;
-
-  pollfds[ 1 ].fd = STDIN_FILENO;
-  pollfds[ 1 ].events = POLLIN;
-
-  pollfds[ 2 ].fd = signal_fd;
-  pollfds[ 2 ].events = POLLIN;
+  Select &sel = Select::get_instance();
 
   while ( 1 ) {
     try {
@@ -321,22 +427,47 @@ void STMClient::main( void )
 	wait_time = min( 250, wait_time );
       }
 
-      int active_fds = poll( pollfds, 3, wait_time );
-      if ( active_fds < 0 && errno == EINTR ) {
-	continue;
-      } else if ( active_fds < 0 ) {
-	perror( "poll" );
+      /* poll for events */
+      /* network->fd() can in theory change over time */
+      sel.clear_fds();
+      std::vector< int > fd_list( network->fds() );
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	sel.add_fd( *it );
+      }
+      sel.add_fd( STDIN_FILENO );
+
+      int active_fds = sel.select( wait_time );
+      if ( active_fds < 0 ) {
+	perror( "select" );
 	break;
       }
 
-      if ( pollfds[ 0 ].revents & POLLIN ) {
-	/* packet received from the network */
-	if ( !process_network_input() ) { return; }
+      bool network_ready_to_read = false;
+
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	if ( sel.read( *it ) ) {
+	  /* packet received from the network */
+	  /* we only read one socket each run */
+	  network_ready_to_read = true;
+	}
+
+	if ( sel.error( *it ) ) {
+	  /* network problem */
+	  break;
+	}
+      }
+
+      if ( network_ready_to_read ) {
+	process_network_input();
       }
     
-      if ( pollfds[ 1 ].revents & POLLIN ) {
+      if ( sel.read( STDIN_FILENO ) ) {
 	/* input from the user needs to be fed to the network */
-	if ( !process_user_input( pollfds[ 1 ].fd ) ) {
+	if ( !process_user_input( STDIN_FILENO ) ) {
 	  if ( !network->has_remote_addr() ) {
 	    break;
 	  } else if ( !network->shutdown_in_progress() ) {
@@ -346,32 +477,29 @@ void STMClient::main( void )
 	}
       }
 
-      if ( pollfds[ 2 ].revents & POLLIN ) {
-	int signo = sigfd_read();
-
-	if ( signo == SIGWINCH ) {
-	  /* resize */
-	  if ( !process_resize() ) { return; }
-	} else if ( signo > 0 ) {
-	  /* shutdown signal */
-
-	  if ( !network->has_remote_addr() ) {
-	    break;
-	  } else if ( !network->shutdown_in_progress() ) {
-	    overlays.get_notification_engine().set_notification_string( wstring( L"Signal received, shutting down..." ), true );
-	    network->start_shutdown();
-	  }
-	}
+      if ( sel.signal( SIGWINCH ) ) {
+        /* resize */
+        if ( !process_resize() ) { return false; }
       }
 
-      if ( (pollfds[ 0 ].revents)
-	   & (POLLERR | POLLHUP | POLLNVAL) ) {
-	/* network problem */
-	break;
+      if ( sel.signal( SIGCONT ) ) {
+	resume();
       }
 
-      if ( (pollfds[ 1 ].revents)
-	   & (POLLERR | POLLHUP | POLLNVAL) ) {
+      if ( sel.signal( SIGTERM )
+           || sel.signal( SIGINT )
+           || sel.signal( SIGHUP )
+           || sel.signal( SIGPIPE ) ) {
+        /* shutdown signal */
+        if ( !network->has_remote_addr() ) {
+          break;
+        } else if ( !network->shutdown_in_progress() ) {
+          overlays.get_notification_engine().set_notification_string( wstring( L"Signal received, shutting down..." ), true );
+          network->start_shutdown();
+        }
+      }
+
+      if ( sel.error( STDIN_FILENO ) ) {
 	/* user problem */
 	if ( !network->has_remote_addr() ) {
 	  break;
@@ -404,10 +532,12 @@ void STMClient::main( void )
 	   && (timestamp() - network->get_latest_remote_state().timestamp > 250) ) {
 	if ( timestamp() - network->get_latest_remote_state().timestamp > 15000 ) {
 	  if ( !network->shutdown_in_progress() ) {
+	    overlays.get_notification_engine().set_notification_string( wstring( L"Timed out waiting for server..." ), true );
 	    network->start_shutdown();
 	  }
+	} else {
+	  overlays.get_notification_engine().set_notification_string( connecting_notification );
 	}
-	overlays.get_notification_engine().set_notification_string( connecting_notification );
       } else if ( (network->get_remote_state_num() != 0)
 		  && (overlays.get_notification_engine().get_notification_string()
 		      == connecting_notification) ) {
@@ -422,7 +552,7 @@ void STMClient::main( void )
       } else {
         overlays.get_notification_engine().clear_network_exception();
       }
-    } catch ( Network::NetworkException e ) {
+    } catch ( const Network::NetworkException &e ) {
       if ( !network->shutdown_in_progress() ) {
         overlays.get_notification_engine().set_network_exception( e );
       }
@@ -431,15 +561,17 @@ void STMClient::main( void )
       req.tv_sec = 0;
       req.tv_nsec = 200000000; /* 0.2 sec */
       nanosleep( &req, NULL );
-    } catch ( Crypto::CryptoException e ) {
+      freeze_timestamp();
+    } catch ( const Crypto::CryptoException &e ) {
       if ( e.fatal ) {
         throw;
       } else {
         wchar_t tmp[ 128 ];
-        swprintf( tmp, 128, L"Crypto exception: %s", e.text.c_str() );
+        swprintf( tmp, 128, L"Crypto exception: %s", e.what() );
         overlays.get_notification_engine().set_notification_string( wstring( tmp ) );
       }
     }
   }
+  return clean_shutdown;
 }
 

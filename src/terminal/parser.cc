@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <assert.h>
@@ -24,8 +38,10 @@
 
 #include "parser.h"
 
+const Parser::StateFamily Parser::family;
+
 static void append_or_delete( Parser::Action *act,
-			      std::list<Parser::Action *>&vec )
+			      std::list<Parser::Action *> &vec )
 {
   assert( act );
 
@@ -47,6 +63,7 @@ std::list<Parser::Action *> Parser::Parser::input( wchar_t ch )
   }
 
   append_or_delete( tx.action, ret );
+  tx.action = NULL;
 
   if ( tx.next_state != NULL ) {
     append_or_delete( tx.next_state->enter(), ret );
@@ -60,6 +77,7 @@ Parser::UTF8Parser::UTF8Parser()
   : parser(), buf_len( 0 )
 {
   assert( BUF_SIZE >= (size_t)MB_CUR_MAX );
+  buf[0] = '\0';
 }
 
 std::list<Parser::Action *> Parser::UTF8Parser::input( char c )
@@ -88,9 +106,6 @@ std::list<Parser::Action *> Parser::UTF8Parser::input( char c )
 
     /* this returns 0 when n = 0! */
 
-    /* This function annoying returns a size_t so we have to check
-       the negative values first before the "> 0" branch */
-
     if ( bytes_parsed == 0 ) {
       /* character was NUL, accept and clear buffer */
       assert( buf_len == 1 );
@@ -113,13 +128,11 @@ std::list<Parser::Action *> Parser::UTF8Parser::input( char c )
       /* can't parse incomplete multibyte character */
       total_bytes_parsed += buf_len;
       continue;
-    } else if ( bytes_parsed > 0 ) {
+    } else {
       /* parsed into pwc, accept */
       assert( bytes_parsed <= buf_len );
       memmove( buf, buf + bytes_parsed, buf_len - bytes_parsed );
       buf_len = buf_len - bytes_parsed;
-    } else {
-      throw std::string( "Unknown return value from mbrtowc" );
     }
 
     /* Cast to unsigned for checks, because some

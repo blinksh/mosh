@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <stdio.h>
@@ -81,10 +95,16 @@ void Dispatcher::parse_params( void )
 
     errno = 0;
     char *endptr;
-    int val = strtol( segment_begin, &endptr, 10 );
+    long val = strtol( segment_begin, &endptr, 10 );
     if ( endptr == segment_begin ) {
       val = -1;
     }
+
+    if ( val > PARAM_MAX || errno == ERANGE ) {
+      val = -1;
+      errno = 0;
+    }
+
     if ( errno == 0 || segment_begin == endptr ) {
       parsed_params.push_back( val );
     }
@@ -95,10 +115,16 @@ void Dispatcher::parse_params( void )
   /* get last param */
   errno = 0;
   char *endptr;
-  int val = strtol( segment_begin, &endptr, 10 );
+  long val = strtol( segment_begin, &endptr, 10 );
   if ( endptr == segment_begin ) {
     val = -1;
   }
+
+  if ( val > PARAM_MAX || errno == ERANGE ) {
+    val = -1;
+    errno = 0;
+  }
+
   if ( errno == 0 || segment_begin == endptr ) {
     parsed_params.push_back( val );
   }
@@ -116,6 +142,7 @@ int Dispatcher::getparam( size_t N, int defaultval )
   if ( parsed_params.size() > N ) {
     ret = parsed_params[ N ];
   }
+
   if ( ret < 1 ) ret = defaultval;
 
   return ret;

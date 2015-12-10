@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef NETWORK_TRANSPORT_HPP
@@ -46,6 +60,7 @@ namespace Network {
 
     /* simple receiver */
     list< TimestampedState<RemoteState> > received_states;
+    uint64_t receiver_quench_timer;
     RemoteState last_receiver_state; /* the state we were in when user last queried state */
     FragmentAssembly fragments;
     bool verbose;
@@ -54,7 +69,7 @@ namespace Network {
     Transport( MyState &initial_state, RemoteState &initial_remote,
 	       const char *desired_ip, const char *desired_port );
     Transport( MyState &initial_state, RemoteState &initial_remote,
-	       const char *key_str, const char *ip, int port );
+	       const char *key_str, const char *ip, const char *port );
 
     /* Send data or an ack if necessary. */
     void tick( void ) { sender.tick(); }
@@ -79,7 +94,7 @@ namespace Network {
     /* Other side has requested shutdown and we have sent one ACK */
     bool counterparty_shutdown_ack_sent( void ) const { return sender.get_counterparty_shutdown_acknowledged(); }
 
-    int port( void ) const { return connection.port(); }
+    std::string port( void ) const { return connection.port(); }
     string get_key( void ) const { return connection.get_key(); }
 
     MyState &get_current_state( void ) { return sender.get_current_state(); }
@@ -89,7 +104,7 @@ namespace Network {
 
     const TimestampedState<RemoteState> & get_latest_remote_state( void ) const { return received_states.back(); }
 
-    int fd( void ) const { return connection.fd(); }
+    const std::vector< int > fds( void ) const { return connection.fds(); }
 
     void set_verbose( void ) { sender.set_verbose(); verbose = true; }
 
@@ -101,7 +116,8 @@ namespace Network {
 
     unsigned int send_interval( void ) const { return sender.send_interval(); }
 
-    const struct in_addr & get_remote_ip( void ) const { return connection.get_remote_ip(); }
+    const Addr &get_remote_addr( void ) const { return connection.get_remote_addr(); }
+    socklen_t get_remote_addr_len( void ) const { return connection.get_remote_addr_len(); }
 
     const NetworkException *get_send_exception( void ) const { return connection.get_send_exception(); }
   };

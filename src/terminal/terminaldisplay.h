@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef TERMINALDISPLAY_HPP
@@ -44,13 +58,17 @@ namespace Terminal {
     }
 
     void append( const char * s ) { str.append( s ); }
-    void appendstring( const std::string s ) { str.append( s ); }
+    void appendstring( const std::string &s ) { str.append( s ); }
 
     void append_silent_move( int y, int x );
   };
 
   class Display {
   private:
+    static bool ti_flag( const char *capname );
+    static int ti_num( const char *capname );
+    static const char *ti_str( const char *capname );
+
     bool has_ech; /* erase character is part of vt200 but not supported by tmux
 		     (or by "screen" terminfo entry, which is what tmux advertises) */
 
@@ -60,10 +78,15 @@ namespace Terminal {
 
     int posterize_colors; /* downsample input colors >8 to [0..7] */
 
+    const char *smcup, *rmcup; /* enter and exit alternate screen mode */
+
     void put_cell( bool initialized, FrameState &frame, const Framebuffer &f ) const;
 
   public:
     void downgrade( Framebuffer &f ) const { if ( posterize_colors ) { f.posterize(); } }
+
+    std::string open() const;
+    std::string close() const;
 
     std::string new_frame( bool initialized, const Framebuffer &last, const Framebuffer &f ) const;
 

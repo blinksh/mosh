@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 /* Tests the Mosh crypto layer by encrypting and decrypting a bunch of random
@@ -38,11 +52,11 @@ const size_t MESSAGE_SIZE_MAX     = (2048 - 16);
 const size_t MESSAGES_PER_SESSION = 256;
 const size_t NUM_SESSIONS         = 64;
 
-bool verbose = true;
+bool verbose = false;
 
 #define NONCE_FMT "%016"PRIx64
 
-std::string random_payload( void ) {
+static std::string random_payload( void ) {
   const size_t len = prng.uint32() % MESSAGE_SIZE_MAX;
   char *buf = new char[len];
   prng.fill( buf, len );
@@ -52,13 +66,13 @@ std::string random_payload( void ) {
   return payload;
 }
 
-void test_bad_decrypt( Session &decryption_session ) {
+static void test_bad_decrypt( Session &decryption_session ) {
   std::string bad_ct = random_payload();
 
   bool got_exn = false;
   try {
     decryption_session.decrypt( bad_ct );
-  } catch ( const CryptoException& e ) {
+  } catch ( const CryptoException &e ) {
     got_exn = true;
 
     /* The "bad decrypt" exception needs to be non-fatal, otherwise we are
@@ -73,7 +87,7 @@ void test_bad_decrypt( Session &decryption_session ) {
 }
 
 /* Generate a single key and initial nonce, then perform some encryptions. */
-void test_one_session( void ) {
+static void test_one_session( void ) {
   Base64Key key;
   Session encryption_session( key );
   Session decryption_session( key );
@@ -121,16 +135,16 @@ void test_one_session( void ) {
 }
 
 int main( int argc, char *argv[] ) {
-  if ( ( argc >= 2 ) && !strcmp( argv[ 1 ], "-q" ) ) {
-    verbose = false;
+  if ( argc >= 2 && strcmp( argv[ 1 ], "-v" ) == 0 ) {
+    verbose = true;
   }
 
   for ( size_t i=0; i<NUM_SESSIONS; i++ ) {
     try {
       test_one_session();
-    } catch ( const CryptoException& e ) {
+    } catch ( const CryptoException &e ) {
       fprintf( stderr, "Crypto exception: %s\r\n",
-               e.text.c_str() );
+               e.what() );
       fatal_assert( false );
     }
   }

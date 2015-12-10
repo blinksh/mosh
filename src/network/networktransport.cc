@@ -14,9 +14,22 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
-#include <assert.h>
 #include <iostream>
 
 #include "networktransport.h"
@@ -32,6 +45,7 @@ Transport<MyState, RemoteState>::Transport( MyState &initial_state, RemoteState 
   : connection( desired_ip, desired_port ),
     sender( &connection, initial_state ),
     received_states( 1, TimestampedState<RemoteState>( timestamp(), 0, initial_remote ) ),
+    receiver_quench_timer( 0 ),
     last_receiver_state( initial_remote ),
     fragments(),
     verbose( false )
@@ -41,10 +55,11 @@ Transport<MyState, RemoteState>::Transport( MyState &initial_state, RemoteState 
 
 template <class MyState, class RemoteState>
 Transport<MyState, RemoteState>::Transport( MyState &initial_state, RemoteState &initial_remote,
-					    const char *key_str, const char *ip, int port )
+					    const char *key_str, const char *ip, const char *port )
   : connection( key_str, ip, port ),
     sender( &connection, initial_state ),
     received_states( 1, TimestampedState<RemoteState>( timestamp(), 0, initial_remote ) ),
+    receiver_quench_timer( 0 ),
     last_receiver_state( initial_remote ),
     fragments(),
     verbose( false )
@@ -66,6 +81,9 @@ void Transport<MyState, RemoteState>::recv( void )
     }
 
     sender.process_acknowledgment_through( inst.ack_num() );
+
+    /* inform network layer of roundtrip (end-to-end-to-end) connectivity */
+    connection.set_last_roundtrip_success( sender.get_sent_state_acked_timestamp() );
 
     /* first, make sure we don't already have the new state */
     for ( typename list< TimestampedState<RemoteState> >::iterator i = received_states.begin();
@@ -92,6 +110,26 @@ void Transport<MyState, RemoteState>::recv( void )
       return; /* this is security-sensitive and part of how we enforce idempotency */
     }
     
+    /* Do not accept state if our queue is full */
+    /* This is better than dropping states from the middle of the
+       queue (as sender does), because we don't want to ACK a state
+       and then discard it later. */
+
+    process_throwaway_until( inst.throwaway_num() );
+
+    if ( received_states.size() > 1024 ) { /* limit on state queue */
+      uint64_t now = timestamp();
+      if ( now < receiver_quench_timer ) { /* deny letting state grow further */
+	if ( verbose ) {
+	  fprintf( stderr, "[%u] Receiver queue full, discarding %d (malicious sender or long-unidirectional connectivity?)\n",
+		   (unsigned int)(timestamp() % 100000), (int)inst.new_num() );
+	}
+	return;
+      } else {
+	receiver_quench_timer = now + 15000;
+      }
+    }
+
     /* apply diff to reference state */
     TimestampedState<RemoteState> new_state = *reference_state;
     new_state.timestamp = timestamp();
@@ -100,8 +138,6 @@ void Transport<MyState, RemoteState>::recv( void )
     if ( !inst.diff().empty() ) {
       new_state.state.apply_string( inst.diff() );
     }
-
-    process_throwaway_until( inst.throwaway_num() );
 
     /* Insert new state in sorted place */
     for ( typename list< TimestampedState<RemoteState> >::iterator i = received_states.begin();
@@ -144,7 +180,7 @@ void Transport<MyState, RemoteState>::process_throwaway_until( uint64_t throwawa
     i = inext;
   }
 
-  assert( received_states.size() > 0 );
+  fatal_assert( received_states.size() > 0 );
 }
 
 template <class MyState, class RemoteState>

@@ -14,15 +14,30 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <termios.h>
 #include <unistd.h>
-#include <sys/poll.h>
 
 #include "user.h"
 #include "fatal_assert.h"
+#include "pty_compat.h"
 #include "networktransport.cc"
+#include "select.h"
 
 using namespace Network;
 
@@ -31,7 +46,7 @@ int main( int argc, char *argv[] )
   bool server = true;
   char *key;
   char *ip;
-  int port;
+  char *port;
 
   UserStream me, remote;
 
@@ -44,34 +59,36 @@ int main( int argc, char *argv[] )
       
       key = argv[ 1 ];
       ip = argv[ 2 ];
-      port = atoi( argv[ 3 ] );
+      port = argv[ 3 ];
       
       n = new Transport<UserStream, UserStream>( me, remote, key, ip, port );
     } else {
       n = new Transport<UserStream, UserStream>( me, remote, NULL, NULL );
     }
-  } catch ( CryptoException e ) {
-    fprintf( stderr, "Fatal error: %s\n", e.text.c_str() );
+    fprintf( stderr, "Port bound is %s, key is %s\n", n->port().c_str(), n->get_key().c_str() );
+  } catch ( const std::exception &e ) {
+    fprintf( stderr, "Fatal startup error: %s\n", e.what() );
     exit( 1 );
   }
 
-  fprintf( stderr, "Port bound is %d, key is %s\n", n->port(), n->get_key().c_str() );
-
   if ( server ) {
-    struct pollfd my_pollfd;
-    my_pollfd.fd = n->fd();
-    my_pollfd.events = POLLIN;
+    Select &sel = Select::get_instance();
     uint64_t last_num = n->get_remote_state_num();
     while ( true ) {
       try {
-	if ( poll( &my_pollfd, 1, n->wait_time() ) < 0 ) {
-	  perror( "poll" );
+	sel.clear_fds();
+	std::vector< int > fd_list( n->fds() );
+	assert( fd_list.size() == 1 ); /* servers don't hop */
+	int network_fd = fd_list.back();
+	sel.add_fd( network_fd );
+	if ( sel.select( n->wait_time() ) < 0 ) {
+	  perror( "select" );
 	  exit( 1 );
 	}
 	
 	n->tick();
 
-	if ( my_pollfd.revents & POLLIN ) {
+	if ( sel.read( network_fd ) ) {
 	  n->recv();
 
 	  if ( n->get_remote_state_num() != last_num ) {
@@ -79,8 +96,8 @@ int main( int argc, char *argv[] )
 	    last_num = n->get_remote_state_num();
 	  }
 	}
-      } catch ( CryptoException e ) {
-	fprintf( stderr, "Cryptographic error: %s\n", e.text.c_str() );
+      } catch ( const std::exception &e ) {
+	fprintf( stderr, "Server error: %s\n", e.what() );
       }
     }
   } else {
@@ -101,35 +118,52 @@ int main( int argc, char *argv[] )
       exit( 1 );
     }
 
-    struct pollfd fds[ 2 ];
-    fds[ 0 ].fd = STDIN_FILENO;
-    fds[ 0 ].events = POLLIN;
-
-    fds[ 1 ].fd = n->fd();
-    fds[ 1 ].events = POLLIN;
+    Select &sel = Select::get_instance();
 
     while( true ) {
+      sel.clear_fds();
+      sel.add_fd( STDIN_FILENO );
+
+      std::vector< int > fd_list( n->fds() );
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	sel.add_fd( *it );
+      }
+
       try {
-	if ( poll( fds, 2, n->wait_time() ) < 0 ) {
-	  perror( "poll" );
+	if ( sel.select( n->wait_time() ) < 0 ) {
+	  perror( "select" );
 	}
 
 	n->tick();
 
-	if ( fds[ 0 ].revents & POLLIN ) {
+	if ( sel.read( STDIN_FILENO ) ) {
 	  char x;
 	  fatal_assert( read( STDIN_FILENO, &x, 1 ) == 1 );
 	  n->get_current_state().push_back( Parser::UserByte( x ) );
 	}
 
-	if ( fds[ 1 ].revents & POLLIN ) {
+	bool network_ready_to_read = false;
+	for ( std::vector< int >::const_iterator it = fd_list.begin();
+	      it != fd_list.end();
+	      it++ ) {
+	  if ( sel.read( *it ) ) {
+	    /* packet received from the network */
+	    /* we only read one socket each run */
+	    network_ready_to_read = true;
+	  }
+
+	  if ( sel.error( *it ) ) {
+	    break;
+	  }
+	}
+
+	if ( network_ready_to_read ) {
 	  n->recv();
 	}
-      } catch ( NetworkException e ) {
-	fprintf( stderr, "%s: %s\r\n", e.function.c_str(), strerror( e.the_errno ) );
-	break;
-      } catch ( CryptoException e ) {
-	fprintf( stderr, "Cryptographic error: %s\n", e.text.c_str() );
+      } catch ( const std::exception &e ) {
+	fprintf( stderr, "Client error: %s\n", e.what() );
       }
     }
 
