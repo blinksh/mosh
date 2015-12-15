@@ -19,108 +19,26 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <vector>
-#include <map>
+//#include <vector>
+//#include <map>
 #include <stdio.h>
 #include <string>
 #include <sys/socket.h>
 #include <getopt.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <signal.h>
+ #include <arpa/inet.h>
+// #include <netdb.h>
+//#include <signal.h>
 #include <errno.h>
 #include <unistd.h>
 #include <libssh2.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+//#include <sys/ioctl.h>
+//#include <sys/types.h>
+//#include <sys/wait.h>
 
 #include <sstream>
 #include <iostream>
 
-#if HAVE_PTY_H
-#include <pty.h>
-#elif HAVE_UTIL_H
-#include <util.h>
-#endif
-
-#if OPENPTY_IN_LIBUTIL
-#include <libutil.h>
-#endif
-
-#if !HAVE_GETLINE
-ssize_t getline( char ** restrict linep,
-    size_t * restrict linecapp,
-    FILE * restrict stream ) {
-  size_t num_read = 0;
-  if ( !linep || !linecapp ) {
-    errno = EINVAL;
-    return -1;
-  }
-  if ( !*linep ) {
-    *linecapp = 0;
-  }
-  while ( 1 ) {
-    int ch = getc( stream );
-    if ( ch == EOF ) {
-      return num_read ? (ssize_t)num_read : -1;
-    }
-    if ( num_read + 1 >= *linecapp ) {
-      char *new_line = *linep;
-      size_t new_linecap = *linecapp;
-      if ( *linecapp > SSIZE_MAX - 4096 ) {
-        errno = EOVERFLOW;
-        return -1;
-      }
-      new_linecap += 4096;
-      new_line = (char *)realloc( new_line, new_linecap );
-      if ( !new_line ) {
-        return -1;
-      }
-      *linecapp = new_linecap;
-      *linep = new_line;
-    }
-    (*linep)[num_read++] = ch;
-    // so that we can safely return at any time,
-    (*linep)[num_read] = '\0';
-    if (ch == '\n') {
-      return num_read;
-    }
-  }
-  return -1;
-}
-#endif
-
 using namespace std;
-
-inline string shell_quote_string( const string &x )
-{
-  string result = "'";
-  string rest = x;
-  while ( rest.size() ) {
-    size_t good_part = rest.find( "'" );
-    result += rest.substr( 0, good_part );
-    if ( good_part != string::npos ) {
-      result += "'\\''";
-      rest = rest.substr( good_part + 1 );
-    } else {
-      break;
-    }
-  }
-  return result + "'";
-}
-
-template <typename SequenceT>
-inline string shell_quote( const SequenceT &sequence )
-{
-  string result;
-  for ( typename SequenceT::const_iterator i = sequence.begin();
-        i != sequence.end();
-        i++ ) {
-    result += shell_quote_string( *i ) + " ";
-  }
-  return result.substr( 0, result.size() - 1 );
-}
 
 void die( const char *format, ... ) {
   va_list args;
@@ -321,125 +239,8 @@ int main( int argc, char *argv[] )
 
   unsetenv( "MOSH_PREDICTION_DISPLAY" );
 
-  //  Fake-proxy mode is needed to determine a real host address by its alias.
-  //  One could use his own ssh_config options to make an alias for host,
-  //  e.g. "ssh abcd" may mean "ssh example.com". To find this "example.com"
-  //  name, we use a little hack: call ssh with ProxyCommand equals to
-  //  "ourself --proxy-command %h" option and receive the real hostname (it is
-  //  passed instead of %h placeholder replaced by ssh client). We also dump
-  //  all the auxillary traffic through ourself (e.g. responses from mosh-server
-  //  like "MOSH CONNECT XXX YYY") to make it available from the client.
-  if ( fake_proxy ) {
-    string host = argv[optind++];
-    string port = argv[optind++];
-
-    int sockfd = -1;
-    struct addrinfo hints, *servinfo, *p;
-    int rv;
-
-    memset( &hints, 0, sizeof( hints ) );
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if ( ( rv = getaddrinfo( host.c_str(),
-                             port_request.size() ? port_request.c_str() : "ssh",
-                             &hints,
-                             &servinfo ) ) != 0 ) {
-      die( "%s: Could not resolve hostname %s: getaddrinfo: %s",
-           argv[0],
-           host.c_str(),
-           gai_strerror( rv ) );
-    }
-
-    // loop through all the results and connect to the first we can
-    for ( p = servinfo; p != NULL; p = p->ai_next ) {
-      if ( ( sockfd = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP ) ) == -1 ) {
-        continue;
-      }
-
-      if ( connect( sockfd, p->ai_addr, p->ai_addrlen ) == -1 ) {
-        close( sockfd );
-        continue;
-      }
-
-      char host[NI_MAXHOST], service[NI_MAXSERV];
-      if ( getnameinfo( p->ai_addr, p->ai_addrlen,
-            host, NI_MAXHOST,
-            service, NI_MAXSERV,
-            NI_NUMERICSERV | NI_NUMERICHOST ) == -1 ) {
-        die( "Couldn't get host name info" );
-      }
-
-      fprintf( stderr, "MOSH IP %s\n", host );
-      break; // if we get here, we must have connected successfully
-    }
-
-    if ( p == NULL ) {
-      // looped off the end of the list with no connection
-      die( "%s: failed to connect to host %s port %s",
-            argv[0], host.c_str(), port.c_str() );
-    }
-
-    freeaddrinfo( servinfo ); // all done with this structure
-
-    int pid = fork();
-    if ( pid == -1 ) {
-      die( "%s: fork: %d", argv[0], errno );
-    }
-    if ( pid == 0 ) {
-      cat( sockfd, 1 );
-      shutdown( sockfd, 0 );
-      exit( 0 );
-    }
-    signal( SIGHUP, SIG_IGN );
-    cat( 0, sockfd );
-    shutdown( sockfd, 1 );
-    waitpid( pid, NULL, 0 );
-    exit( 0 );
-  }
-
-  if ( argc - optind < 1 ) {
-    die( usage_format, argv[0] );
-  }
-
   string userhost = argv[optind++];
-  char **command = &argv[optind];
-  int commands = argc - optind;
 
-  int pipe_fd[2];
-  if ( pipe( pipe_fd ) < 0 ) {
-    die( "%s: pipe: %d", argv[0], errno );
-  }
-  // TODO: Fix color configuration
-  string color_invocation = client + " -c";
-  FILE *color_file = popen( color_invocation.c_str(), "r" );
-  if ( !color_file ) {
-    die( "%s: popen: %d", argv[0], errno );
-  }
-  char *buf = NULL;
-  size_t buf_sz = 0;
-  ssize_t n;
-  if ( ( n = getline( &buf, &buf_sz, color_file ) ) < 0 ) {
-    die( "%s: Can't count colors: %d", argv[0], errno );
-  }
-  string colors = string( buf, n );
-  pclose( color_file );
-
-  if ( !colors.size() ||
-       colors.find_first_not_of( "0123456789" ) != string::npos ||
-       atoi( colors.c_str() ) < 0 ) {
-    colors = "0";
-  }
-  // TODO: Fill in the winsize structure pointed to by the third argument with the screen 
-  // width and height. http://www.delorie.com/djgpp/doc/libc/libc_495.html. Probably not necessary 
-  // and we can go with a 0 for default terminal size.
-
-  int pty, pty_slave;
-  struct winsize ws;
-  if ( ioctl( 0, TIOCGWINSZ, &ws ) == -1 ) {
-    die( "%s: ioctl: %d", argv[0], errno );
-  }
-  
   // Create ssh connection with those parameters
   struct sockaddr_in sin;
   int sock;
@@ -511,6 +312,8 @@ int main( int argc, char *argv[] )
       die("No channel found\n");
     }
 
+// TODO: Add parameters to the server?
+// TODO: Fix color configuration
   const char *commandline = "mosh-server new";
 
   while( (rc = libssh2_channel_exec(channel, commandline)) ==
@@ -523,9 +326,7 @@ int main( int argc, char *argv[] )
       die("Error executing command\n");
     } 
 
-  int bytecount = 0;  
   string result;
-
   for( ;; )
     {
       /* loop until we block */
@@ -611,7 +412,6 @@ int main( int argc, char *argv[] )
   if ( !key.size() || !port.size() ) {
     die( "%s: Did not find mosh server startup message.", argv[0] );
   }
-
   
-  printf("good to go\n");
+  printf("Good to go. Starting Mosh\n");
 }
