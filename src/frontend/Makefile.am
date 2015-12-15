@@ -4,7 +4,7 @@ AM_LDFLAGS  = $(HARDEN_LDFLAGS)
 LDADD = ../crypto/libmoshcrypto.a ../network/libmoshnetwork.a ../statesync/libmoshstatesync.a ../terminal/libmoshterminal.a ../util/libmoshutil.a ../protobufs/libmoshprotos.a -lm $(TINFO_LIBS) $(protobuf_LIBS) $(CRYPTO_LIBS)
 
 mosh_server_LDADD = $(LDADD) $(LIBUTIL)
-mosh_LDADD = $(LDADD) $(LIBUTIL)
+mosh_LDADD = $(LDADD) $(LIBUTIL) /usr/lib64/libssh2.so
 
 bin_PROGRAMS =
 

@@ -30,9 +30,13 @@
 #include <signal.h>
 #include <errno.h>
 #include <unistd.h>
+#include <libssh2.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+
+#include <sstream>
+#include <iostream>
 
 #if HAVE_PTY_H
 #include <pty.h>
@@ -195,9 +199,40 @@ void cat( int ifd, int ofd )
   }
 }
 
+static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
+{
+  struct timeval timeout;
+  int rc;
+  fd_set fd;
+  fd_set *writefd = NULL;
+  fd_set *readfd = NULL;
+  int dir;
+
+  timeout.tv_sec = 10;
+  timeout.tv_usec = 0;
+
+  FD_ZERO(&fd);
+
+  FD_SET(socket_fd, &fd);
+
+  /* now make sure we wait in the correct direction */
+  dir = libssh2_session_block_directions(session);
+
+  if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)
+    readfd = &fd;
+
+  if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
+    writefd = &fd;
+
+  rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
+
+  return rc;
+}
+
 int main( int argc, char *argv[] )
 {
   argv0 = argv[0];
+  // TODO: Make constants
   string client = "mosh-client";
   string server = "mosh-server";
   string ssh = "ssh";
@@ -216,6 +251,8 @@ int main( int argc, char *argv[] )
     { "fake-proxy!", no_argument,        &fake_proxy,     1  },
     { 0, 0, 0, 0 }
   };
+
+  // TODO: Bootstrap func with opt parameters
   while ( 1 ) {
     int option_index = 0;
     int c = getopt_long( argc, argv, "anp:",
@@ -260,7 +297,7 @@ int main( int argc, char *argv[] )
   if ( version ) {
     die( version_format, PACKAGE_VERSION );
   }
-
+  // TODO: Force predictive to adaptive
   if ( predict.size() ) {
     predict_check( predict, 0 );
   } else if ( getenv( "MOSH_PREDICTION_DELAY" ) ) {
@@ -270,7 +307,8 @@ int main( int argc, char *argv[] )
     predict = "adaptive";
     predict_check( predict, 0 );
   }
-
+  
+  // TODO: Accept port request from value on field
   if ( port_request.size() ) {
     if ( port_request.find_first_not_of( "0123456789" ) != string::npos ||
          atoi( port_request.c_str() ) < 0 ||
@@ -283,6 +321,14 @@ int main( int argc, char *argv[] )
 
   unsetenv( "MOSH_PREDICTION_DISPLAY" );
 
+  //  Fake-proxy mode is needed to determine a real host address by its alias.
+  //  One could use his own ssh_config options to make an alias for host,
+  //  e.g. "ssh abcd" may mean "ssh example.com". To find this "example.com"
+  //  name, we use a little hack: call ssh with ProxyCommand equals to
+  //  "ourself --proxy-command %h" option and receive the real hostname (it is
+  //  passed instead of %h placeholder replaced by ssh client). We also dump
+  //  all the auxillary traffic through ourself (e.g. responses from mosh-server
+  //  like "MOSH CONNECT XXX YYY") to make it available from the client.
   if ( fake_proxy ) {
     string host = argv[optind++];
     string port = argv[optind++];
@@ -364,7 +410,7 @@ int main( int argc, char *argv[] )
   if ( pipe( pipe_fd ) < 0 ) {
     die( "%s: pipe: %d", argv[0], errno );
   }
-
+  // TODO: Fix color configuration
   string color_invocation = client + " -c";
   FILE *color_file = popen( color_invocation.c_str(), "r" );
   if ( !color_file ) {
@@ -384,80 +430,161 @@ int main( int argc, char *argv[] )
        atoi( colors.c_str() ) < 0 ) {
     colors = "0";
   }
+  // TODO: Fill in the winsize structure pointed to by the third argument with the screen 
+  // width and height. http://www.delorie.com/djgpp/doc/libc/libc_495.html. Probably not necessary 
+  // and we can go with a 0 for default terminal size.
 
   int pty, pty_slave;
   struct winsize ws;
   if ( ioctl( 0, TIOCGWINSZ, &ws ) == -1 ) {
     die( "%s: ioctl: %d", argv[0], errno );
   }
+  
+  // Create ssh connection with those parameters
+  struct sockaddr_in sin;
+  int sock;
 
-  if ( openpty( &pty, &pty_slave, NULL, NULL, &ws ) == -1 ) {
-    die( "%s: openpty: %d", argv[0], errno );
+  const char *host = "127.0.0.1";
+  LIBSSH2_SESSION *session;
+  LIBSSH2_CHANNEL *channel;
+  int rc;  
+  unsigned long hostaddr;
+
+  hostaddr = inet_addr(host);
+
+  // Connect to port on host
+  sock = socket(AF_INET, SOCK_STREAM, 0);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(22); // TODO: Use a custom ssh port
+  sin.sin_addr.s_addr = hostaddr; // !! Always an IP address
+
+  if ((rc = connect(sock, (struct sockaddr*)(&sin),
+		    sizeof(struct sockaddr_in))) != 0) {
+    die("failed to open socket for ssh connection!\n");
   }
 
-  int pid = fork();
-  if ( pid == -1 ) {
-    die( "%s: fork: %d", argv[0], errno );
+  session = libssh2_session_init();
+  if (!session) {
+    die("create session failed");
   }
-  if ( pid == 0 ) {
-    close( pty );
-    if ( -1 == dup2( pty_slave, 1 ) ||
-         -1 == dup2( pty_slave, 2 ) ) {
-      die( "%s: dup2: %d", argv[0], errno );
-    }
-    close( pty_slave );
-
-    vector<string> server_args;
-    server_args.push_back( "new" );
-    server_args.push_back( "-s" );
-    server_args.push_back( "-c" );
-    server_args.push_back( colors );
-    if ( port_request.size() ) {
-      server_args.push_back( "-p" );
-      server_args.push_back( port_request );
-    }
-    if ( commands ) {
-      server_args.insert( server_args.end(), command, command + commands );
-    }
-    string quoted_self = shell_quote_string( string( argv[0] ) );
-    string quoted_server_args = shell_quote( server_args );
-    fflush( stdout );
-
-    string proxy_arg = "ProxyCommand=" + quoted_self + " --fake-proxy -- %h %p";
-    string ssh_remote_command = server + " " + quoted_server_args;
-
-    vector<string> ssh_args;
-    ssh_args.push_back( "-S" );
-    ssh_args.push_back( "none" );
-    ssh_args.push_back( "-o" );
-    ssh_args.push_back( proxy_arg );
-    ssh_args.push_back( "-t" );
-    ssh_args.push_back( userhost );
-    ssh_args.push_back( "--" );
-    ssh_args.push_back( ssh_remote_command );
-
-    string ssh_exec_string = ssh + " " + shell_quote( ssh_args );
-
-    int ret = execlp( "sh", "sh", "-c", ssh_exec_string.c_str(), (char *)NULL );
-    if ( ret == -1 ) {
-      die( "Cannot exec ssh: %d", errno );
-    }
+  
+  // tell libssh2 we want it all done none non-blocking
+  libssh2_session_set_blocking(session, 0);
+  
+  // ... start it up. This will trade welcome banners, exchange keys,
+  // and setup crypto, compression, and MAC layers  
+  while ((rc = libssh2_session_handshake(session, sock)) == 
+	 LIBSSH2_ERROR_EAGAIN);
+  if (rc) {
+    die("Session handshake failed");
   }
 
-  close( pty_slave );
-  string ip, port, key;
+  const char *username = "carlos";
+  const char *password = "";
 
-  FILE *pty_file = fdopen( pty, "r" );
+  //ignore knownhosts, etc... although we should save them on a file
+  //libssh2_knownhost_init(...) [..]
+  
+  // while ((rc = libssh2_userauth_password(session, username, password)) ==
+
+  // 	 LIBSSH2_ERROR_EAGAIN);
+  // if (rc) {
+  //   die("Wrong password");
+  // }
+  while ((rc = libssh2_userauth_publickey_fromfile(session, username,
+  						   "/home/carlos/.ssh/id_rsa.pub",
+  						   "/home/carlos/.ssh/id_rsa",
+  						   password)) == LIBSSH2_ERROR_EAGAIN);
+  if (rc) {
+    die("Authentication failed");
+  }
+  
+  /* Exec non-blocking on the remote host */
+  while( (channel = libssh2_channel_open_session(session)) == NULL &&
+	 libssh2_session_last_error(session,NULL,NULL,0) ==
+	 LIBSSH2_ERROR_EAGAIN )
+    {
+      waitsocket(sock, session);
+    }
+  if( channel == NULL )
+    {
+      die("No channel found\n");
+    }
+
+  const char *commandline = "mosh-server new";
+
+  while( (rc = libssh2_channel_exec(channel, commandline)) ==
+	 LIBSSH2_ERROR_EAGAIN )
+    {
+      waitsocket(sock, session);
+    }
+  if( rc != 0 )
+    {
+      die("Error executing command\n");
+    } 
+
+  int bytecount = 0;  
+  string result;
+
+  for( ;; )
+    {
+      /* loop until we block */
+      int rc;
+      do
+	{
+	  char buffer[0x4000];
+	  rc = libssh2_channel_read( channel, buffer, sizeof(buffer) );
+
+	  if( rc > 0 )
+	    {
+	      result.append(buffer);
+	    }
+	  else {
+	    if( rc != LIBSSH2_ERROR_EAGAIN )
+	      /* no need to output this for the EAGAIN case */
+	      fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
+	  }
+	}
+      while( rc > 0 );
+
+      /* this is due to blocking that would occur otherwise so we loop on
+	 this condition */
+      if( rc == LIBSSH2_ERROR_EAGAIN )
+	{
+	  waitsocket(sock, session);
+	}
+      else
+	break;
+    }
+  // Close channel
+  while( (rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN )
+    waitsocket(sock, session);
+
+  libssh2_channel_free(channel);
+  channel = NULL;
+  
+  // Shutdown session
+  libssh2_session_disconnect(session, "Normal Shutdown, Thank you for playing");
+  libssh2_session_free(session);
+
+  close(sock);
+  libssh2_exit();
+
+// TODO: It would be great to use the ssh conn and read in parallel, to save
+// any race conditions or other conditions.
+  printf("%s", result.c_str());
+  string ip(host), port, key;
   string line;
-  while ( ( n = getline( &buf, &buf_sz, pty_file ) ) >= 0 ) {
-    line = string( buf, n );
-    line = line.erase( line.find_last_not_of( "\n" ) );
-    if ( line.compare( 0, 8, "MOSH IP " ) == 0 ) {
-      size_t ip_end = line.find_last_not_of( " \t\n\r" );
-      if ( ip_end != string::npos && ip_end >= 8 ) {
-        ip = line.substr( 8, ip_end + 1 - 8 );
-      }
-    } else if ( line.compare( 0, 13, "MOSH CONNECT " ) == 0 ) {
+  std::istringstream response(result);
+  while (std::getline(response, line)) {
+    // Not needed as we use a real IP address.
+    // if ( line.compare( 0, 8, "MOSH IP " ) == 0 ) { // MOSH IP 127.0.0.1
+    //   size_t ip_end = line.find_last_not_of( " \t\n\r" );
+    //   if ( ip_end != string::npos && ip_end >= 8 ) {
+    //     ip = line.substr( 8, ip_end + 1 - 8 );
+    //   }
+    // } else 
+      if ( line.compare( 0, 13, "MOSH CONNECT " ) == 0 ) { // MOSH CONNECT 60002 0P/WOaijf73SUDP40RXG0A\r
       size_t port_end = line.find_first_not_of( "0123456789", 13 );
       if ( port_end != string::npos && port_end >= 13 ) {
         port = line.substr( 13, port_end - 13 );
@@ -473,8 +600,9 @@ int main( int argc, char *argv[] )
       printf( "%s\n", line.c_str() );
     }
   }
-  waitpid( pid, NULL, 0 );
+  printf( "Connecting to %s, with key %s\n", ip.c_str(), key.c_str());
 
+// TODO: Make sure we have an IP address 
   if ( !ip.size() ) {
     die( "%s: Did not find remote IP address (is SSH ProxyCommand disabled?).",
          argv[0] );
@@ -484,7 +612,6 @@ int main( int argc, char *argv[] )
     die( "%s: Did not find mosh server startup message.", argv[0] );
   }
 
-  setenv( "MOSH_KEY", key.c_str(), 1 );
-  setenv( "MOSH_PREDICTION_DISPLAY", predict.c_str(), 1 );
-  execlp( client.c_str(), client.c_str(), ip.c_str(), port.c_str(), (char *)NULL );
+  
+  printf("good to go\n");
 }
