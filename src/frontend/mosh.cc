@@ -38,6 +38,9 @@
 #include <sstream>
 #include <iostream>
 
+#include "stmclient.h"
+#include "locale_utils.h"
+
 using namespace std;
 
 void die( const char *format, ... ) {
@@ -413,5 +416,41 @@ int main( int argc, char *argv[] )
     die( "%s: Did not find mosh server startup message.", argv[0] );
   }
   
-  printf("Good to go. Starting Mosh\n");
+  printf("Good to go! Starting Mosh\n");
+
+  /* Adopt native locale */
+  set_native_locale();
+
+  bool success = false;
+  try {
+    STMClient client( ip.c_str(), port.c_str(), 
+		      strdup(key.c_str()), predict.c_str() );
+    client.init();
+
+    try {
+      success = client.main();
+    } catch ( ... ) {
+      client.shutdown();
+      throw;
+    }
+
+    client.shutdown();
+  } catch ( const Network::NetworkException &e ) {
+    fprintf( stderr, "Network exception: %s\r\n",
+	     e.what() );
+    success = false;
+  } catch ( const Crypto::CryptoException &e ) {
+    fprintf( stderr, "Crypto exception: %s\r\n",
+	     e.what() );
+    success = false;
+  } catch ( const std::exception &e ) {
+    fprintf( stderr, "Error: %s\r\n", e.what() );
+    success = false;
+  }
+
+  printf( "\n[mosh is exiting.]\n" );
+
+  //free( key );
+
+  return !success;
 }
