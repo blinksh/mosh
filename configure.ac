@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.61])
-AC_INIT([mosh], [1.2], [mosh-devel@mit.edu])
-AM_INIT_AUTOMAKE([-Wall -Werror foreign])
+AC_INIT([mosh], [1.2.5], [mosh-devel@mit.edu])
+AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AC_CONFIG_SRCDIR([src/frontend/mosh-client.cc])
 AC_CONFIG_MACRO_DIR([m4])
@@ -23,7 +23,7 @@ m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 WARNING_CXXFLAGS=""
 PICKY_CXXFLAGS=""
 AC_ARG_ENABLE([compile-warnings],
-  [AS_HELP_STRING([--enable-compile-warnings@<:@=no/yes/maximum/error@:>@],
+  [AS_HELP_STRING([--enable-compile-warnings@<:@=no/yes/maximum/error/distcheck@:>@],
      [Turn on compiler warnings])],
   [case "$enableval" in
      no)
@@ -33,11 +33,19 @@ AC_ARG_ENABLE([compile-warnings],
        ;;
      maximum)
        WARNING_CXXFLAGS="-Wall"
-       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++"
+       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations"
        ;;
      error)
        WARNING_CXXFLAGS="-Wall -Werror"
-       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++"
+       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations"
+       ;;
+     distcheck)
+       if test "$(uname -s)" = Linux; then
+         WARNING_CXXFLAGS="-Wall -Werror"
+       else
+         WARNING_CXXFLAGS="-Wall"
+       fi
+       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations"
        ;;
      *)
        AC_MSG_ERROR([Unknown argument '$enableval' to --enable-compile-warnings])
@@ -134,17 +142,23 @@ AC_ARG_ENABLE([server],
   [build_server="yes"])
 AM_CONDITIONAL([BUILD_SERVER], [test x"$build_server" != xno])
 
-AC_ARG_ENABLE([tests],
-  [AS_HELP_STRING([--enable-tests], [Build tests])],
-  [build_tests="$enableval"],
-  [build_tests="no"])
-AM_CONDITIONAL([BUILD_TESTS], [test x"$build_tests" != xno])
-
 AC_ARG_ENABLE([examples],
   [AS_HELP_STRING([--enable-examples], [Build the miscellaneous programs in src/examples @<:@no@:>@])],
   [build_examples="$enableval"],
   [build_examples="no"])
 AM_CONDITIONAL([BUILD_EXAMPLES], [test x"$build_examples" != xno])
+
+AC_ARG_ENABLE([ufw],
+  [AS_HELP_STRING([--enable-ufw], [Install firewall profile for ufw (Uncomplicated Firewall) @<:@no@:>@])],
+  [install_ufw="$enableval"],
+  [install_ufw="no"])
+AM_CONDITIONAL([INSTALL_UFW], [test x"$install_ufw" != xno])
+
+AC_ARG_ENABLE([completion],
+  [AS_HELP_STRING([--enable-completion], [Install bash_completion rule @<:@no@:>@])],
+  [install_completion="$enableval"],
+  [install_completion="no"])
+AM_CONDITIONAL([INSTALL_COMPLETION], [test x"$install_completion" != xno])
 
 # Checks for libraries.
 AC_ARG_WITH([utempter],
@@ -160,54 +174,38 @@ AS_IF([test x"$with_utempter" != xno],
 
 AC_SEARCH_LIBS([compress], [z], , [AC_MSG_ERROR([Unable to find zlib.])])
 
-AC_ARG_WITH([skalibs],
-  [AS_HELP_STRING([--with-skalibs[=DIR]],
-     [root directory of skalibs installation])],
-  [with_skalibs=$withval
-   AS_IF([test x"$withval" != xyes],
-     [SKALIBS_CPPFLAGS="-I$withval/include"
-      SKALIBS_LDFLAGS="-L$withval/lib"])],
-  [with_skalibs=no])
-AC_ARG_WITH([skalibs-include],
-  [AS_HELP_STRING([--with-skalibs-include=DIR],
-     [specify exact include dir for skalibs headers])],
-  [SKALIBS_CPPFLAGS="-I$withval"])
-AC_ARG_WITH([skalibs-libdir],
-  [AS_HELP_STRING([--with-skalibs-libdir=DIR],
-     [specify exact library dir for skalibs libraries])],
-  [SKALIBS_LDFLAGS="-L$withval"])
-
-STDDJB_CPPFLAGS=""
-STDDJB_LDFLAGS=""
-AS_IF([test x"$with_skalibs" != xno],
-  [AX_CHECK_LIBRARY([SKALIBS], [selfpipe.h], [stddjb], [],
-     [AC_MSG_ERROR([Unable to find skalibs.])])
-   AC_SUBST([STDDJB_CPPFLAGS], ["$SKALIBS_CPPFLAGS"])
-   AC_SUBST([STDDJB_LDFLAGS], ["$SKALIBS_LDFLAGS -lstddjb"])])
-
-have_signalfd="no"
-AC_CHECK_DECL([signalfd],
-  [have_signalfd="yes"
-   AC_DEFINE([HAVE_SIGNALFD], [1],
-     [Define if signalfd is available.])],
-  , [[#include <sys/signalfd.h>]])
-
-AS_IF([test x"$have_signalfd" = xno],
-  [AC_DEFINE([USE_LIBSTDDJB], [1],
-    [Define if we should call functions from libstddjb (part of skalibs)])])
-AM_CONDITIONAL([USE_LIBSTDDJB],
-  [test x"$have_signalfd" = xno])
-
-# Build the bundled libstddjb only if we'll use it and we don't have a
-# path for skalibs.
-AM_CONDITIONAL([COND_THIRD_LIBSTDDJB],
-  [test x"$have_signalfd" = xno && test x"$with_skalibs" = xno])
+AC_SEARCH_LIBS([socket], [socket])
+AC_SEARCH_LIBS([inet_addr], [nsl])
 
 # Checks for header files.
-AC_CHECK_HEADERS([arpa/inet.h fcntl.h langinfo.h limits.h locale.h netinet/in.h stddef.h stdint.h inttypes.h stdlib.h string.h sys/ioctl.h sys/resource.h sys/socket.h sys/stat.h sys/time.h termios.h unistd.h wchar.h wctype.h], [], [AC_MSG_ERROR([Missing required header file.])])
+AC_CHECK_HEADERS(m4_normalize([
+  fcntl.h
+  langinfo.h
+  limits.h
+  locale.h
+  netdb.h
+  netinet/in.h
+  stddef.h
+  stdint.h
+  inttypes.h
+  stdlib.h
+  string.h
+  sys/ioctl.h
+  sys/resource.h
+  sys/socket.h
+  sys/stat.h
+  sys/time.h
+  termios.h
+  unistd.h
+  wchar.h
+  wctype.h
+  ]), [], [AC_MSG_ERROR([Missing required header file.])])
 
 AC_CHECK_HEADERS([pty.h util.h libutil.h paths.h])
 AC_CHECK_HEADERS([endian.h sys/endian.h])
+AC_CHECK_HEADERS([utmpx.h])
+AC_CHECK_HEADERS([termio.h])
+AC_CHECK_HEADERS([sys/uio.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
@@ -226,23 +224,115 @@ AC_TYPE_UINTPTR_T
 # Checks for library functions.
 AC_FUNC_FORK
 AC_FUNC_MBRTOWC
-AC_CHECK_FUNCS([gettimeofday setrlimit inet_ntoa iswprint memchr memset nl_langinfo posix_memalign setenv setlocale sigaction socket strchr strdup strerror strtol wcwidth])
+AC_CHECK_FUNCS(m4_normalize([
+  gettimeofday
+  setrlimit
+  iswprint
+  memchr
+  memset
+  nl_langinfo
+  posix_memalign
+  setenv
+  setlocale
+  sigaction
+  socket
+  strchr
+  strdup
+  strncasecmp
+  strtok
+  strerror
+  strtol
+  wcwidth
+  cfmakeraw
+  pselect
+  getaddrinfo
+  getnameinfo
+  ]))
 
 AC_SEARCH_LIBS([clock_gettime], [rt], [AC_DEFINE([HAVE_CLOCK_GETTIME], [1], [Define if clock_gettime is available.])])
 
-PKG_CHECK_MODULES([TINFO], [tinfo], ,
-  [PKG_CHECK_MODULES([TINFO], [ncurses], ,
-     [AX_CHECK_LIBRARY([TINFO], [curses.h], [tinfo],
-        [AC_SUBST([TINFO_CFLAGS], ["$TINFO_CPPFLAGS"])
-         AC_SUBST([TINFO_LIBS], ["$TINFO_LDFLAGS -ltinfo"])],
-        [AX_CHECK_LIBRARY([NCURSES], [curses.h], [ncurses],
-           [AC_SUBST([TINFO_CFLAGS], ["$TINFO_CPPFLAGS"])
-            AC_SUBST([TINFO_LIBS], ["$TINFO_LDFLAGS -lncurses"])],
-           [AC_SUBST([CPPFLAGS], ["$CPPFLAGS -I/usr/include/ncurses"])
-	    AX_CHECK_LIBRARY([CYGWINNCURSES], [term.h], [ncurses],
-              [AC_SUBST([TINFO_CFLAGS], ["$TINFO_CPPFLAGS -I/usr/include/ncurses"])
-               AC_SUBST([TINFO_LIBS], ["$TINFO_LDFLAGS -lncurses"])],
-	      [AC_MSG_ERROR([Unable to find libtinfo or libncurses.])])])])])])
+# Start by trying to find the needed tinfo parts by pkg-config
+PKG_CHECK_MODULES([TINFO], [tinfo],
+  [AC_DEFINE([HAVE_CURSES_H], [1], [Define to 1 if <curses.h> is present])],
+  [PKG_CHECK_MODULES([TINFO], [ncurses],
+    [AC_DEFINE([HAVE_CURSES_H], [1], [Define to 1 if <curses.h> is present])],
+    [AX_CHECK_LIBRARY([TINFO], [curses.h], [tinfo],
+      [AC_DEFINE([HAVE_CURSES_H], [1], [Define to 1 if <curses.h> is present])
+        AC_SUBST([TINFO_CFLAGS], ["$TINFO_CPPFLAGS"])
+        AC_SUBST([TINFO_LIBS], ["$TINFO_LDFLAGS -ltinfo"])],)])])
+
+# Then try to find it in a specific install dir
+AC_ARG_WITH(curses, AC_HELP_STRING([--with-curses=DIR], [Where curses is installed]),
+    [if test $withval != yes; then
+        cv_curses=$withval
+    fi
+    if test x$cv_curses != x/usr; then
+        CURSES_LDFLAGS="-L${cv_curses}/lib"
+        CURSES_CPPFLAGS="-I${cv_curses}/include"
+    fi])
+
+if test "x$ax_cv_have_TINFO" = xno ; then
+    # save away old LDFLAGS/CPPFLAGS and check for curses with cv_curses
+    old_LDFLAGS="$LDFLAGS"
+    old_CPPFLAGS="$CPPFLAGS"
+    LDFLAGS="$LDFLAGS $CURSES_LDFLAGS"
+    CPPFLAGS="$LDFLAGS $CURSES_CPPFLAGS"
+
+    AX_WITH_CURSES
+    # restore old LDFLAGS/CPPFLAGS
+    LDFLAGS="$old_LDFLAGS"
+    CPPFLAGS="$old_CPPFLAGS"
+
+    if test "x$ax_cv_curses_which" = xno ; then
+        AC_MSG_ERROR([requires either tinfo, NcursesW or Ncurses library])
+    else
+        AC_SUBST([TINFO_LIBS], ["$CURSES_LDFLAGS $CURSES_LIB"])
+        AC_SUBST([TINFO_CFLAGS], ["$CURSES_CPPFLAGS"])
+    fi
+fi
+
+dnl Default to OpenSSL, or OS X crypto library if found
+AC_CHECK_HEADERS([CommonCrypto/CommonCrypto.h],
+  [default_crypto_library="apple-common-crypto"],
+  [default_crypto_library="openssl"]
+)
+
+dnl Allow user to select over the default.
+AC_ARG_WITH(
+  [crypto-library],
+  [AS_HELP_STRING([--with-crypto-library=library], [build with the given crypto library, TYPE=openssl|nettle|apple-common-crypto @<:@default=openssl@:>@])],
+  [
+    case "${withval}" in
+      openssl|nettle|apple-common-crypto) ;;
+      *) AC_MSG_ERROR([bad value ${withval} for --with-crypto-library]) ;;
+    esac
+  ],
+  [with_crypto_library="$default_crypto_library"]
+)
+
+dnl Checks for chosen crypto library
+case "${with_crypto_library}" in
+  openssl)
+    PKG_CHECK_MODULES([CRYPTO], [openssl],
+      [],
+      [AC_MSG_ERROR([OpenSSL crypto library not found])])
+    AC_DEFINE([USE_OPENSSL_AES], [1], [Use OpenSSL library])
+    ;;
+  nettle)
+    PKG_CHECK_MODULES([CRYPTO], [nettle],
+      [],
+      [AC_MSG_ERROR([Nettle crypto library not found])])
+    AC_DEFINE([USE_NETTLE_AES], [1], [Use Nettle library])
+    ;;
+  apple-common-crypto)
+    dnl Common Crypto is in Apple's standard paths and base libraries.
+    dnl So just check for presence of the header.
+    AC_CHECK_HEADERS([CommonCrypto/CommonCrypto.h],
+      [],
+      [AC_MSG_ERROR([Apple Common Crypto header not found])])
+    AC_DEFINE([USE_APPLE_COMMON_CRYPTO_AES], [1], [Use Apple Common Crypto library])
+    ;;
+esac
 
 AC_CHECK_DECL([forkpty],
   [AC_DEFINE([FORKPTY_IN_LIBUTIL], [1],
@@ -250,65 +340,11 @@ AC_CHECK_DECL([forkpty],
   , [[#include <sys/types.h>
   #include <libutil.h>]])
 
-AC_ARG_VAR([poll_CFLAGS], [C compiler flags for poll])
-AC_ARG_VAR([poll_LIBS], [linker flags for poll])
-AS_IF([test -z "$poll_LIBS"], [
-  AC_CHECK_LIB([poll], [poll], [poll_LIBS="-lpoll"])
+AC_CHECK_LIB([util], [forkpty], [
+  AC_DEFINE([HAVE_FORKPTY],, [Define if you have forkpty().])
+  LIBUTIL="-lutil"
+  AC_SUBST([LIBUTIL])
 ])
-
-# Check to make sure poll() can handle stdin and ptys
-AC_CACHE_CHECK([whether poll can handle ptys],
-               [ac_cv_poll_pty],
-[
-  save_CFLAGS="$CFLAGS"
-  save_LIBS="$LIBS"
-
-  AS_IF([test "x$poll_CFLAGS" != "x"],
-    [CFLAGS="$CFLAGS $poll_CFLAGS"])
-
-  AS_IF([test "x$poll_LIBS" != "x"],
-    [LIBS="$LIBS $poll_LIBS"])
-
-  LIBS="$LIBS -lutil"
-
-  AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#if HAVE_PTY_H
-#include <pty.h>
-#elif HAVE_UTIL_H
-#include <util.h>
-#endif
-#if FORKPTY_IN_LIBUTIL
-#include <libutil.h>
-#endif
-#include <sys/poll.h>
-
-int master, slave;
-struct pollfd pollfds[ 1 ];
-]], [[
-if ( openpty( &master, &slave, NULL, NULL, NULL ) < 0 ) {
-   perror( "openpty" );
-   exit( 1 );
-}
-pollfds[ 0 ].fd = master;
-pollfds[ 0 ].events = POLLIN;
-int active_fds = poll( pollfds, 1, 100 );
-if ( active_fds < 0 ) {
-   perror( "poll" );
-   exit( 1 );
-}
-if ( pollfds[ 0 ].revents & (POLLERR | POLLHUP | POLLNVAL) ) {
-   exit( 2 );
-}
-]])],
-	[ac_cv_poll_pty=yes],
-	[ac_cv_poll_pty=no])
-  CFLAGS="$save_CFLAGS"
-  LIBS="$save_LIBS"
-])
-AM_CONDITIONAL([COND_THIRD_POLL], [test "x$ac_cv_poll_pty" = "xno"])
 
 AC_MSG_CHECKING([whether pipe2(..., O_CLOEXEC) is supported])
 AC_LINK_IFELSE([AC_LANG_PROGRAM([[#define _GNU_SOURCE
@@ -320,6 +356,20 @@ int pipefd[2];
      [Define if pipe2(..., O_CLOEXEC) is available.])
    AC_MSG_RESULT([yes])],
   [AC_MSG_RESULT([no])])
+
+AC_MSG_CHECKING([whether FD_ISSET() argument is const])
+AC_LANG_PUSH(C++)
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <sys/select.h>
+class T {
+public:
+  fd_set fds;
+  bool Fun( void ) const { return FD_ISSET( 0, &fds ); } };]],
+[[T x; return x.Fun();]])],
+  [AC_DEFINE([FD_ISSET_IS_CONST], [1],
+     [Define if FD_ISSET() fd_set argument is const.])
+   AC_MSG_RESULT([yes])],
+  [AC_MSG_RESULT([no])])
+AC_LANG_POP(C++)
 
 AC_CHECK_DECLS([__builtin_bswap64, __builtin_ctz])
 
@@ -349,17 +399,20 @@ AC_CHECK_DECL([openpty],
      [Define if libutil.h necessary for openpty().])],
   , [[#include <libutil.h>]])
 
-AC_CHECK_DECL([htobe64],
-  [AC_DEFINE([HAVE_HTOBE64], [1],
-  [Define if htobe64 and friends exist.])],
-  [AC_CHECK_DECL([OSSwapHostToBigInt64],
-     [AC_DEFINE([HAVE_OSX_SWAP], [1],
-        [Define if OSSwapHostToBigInt64 and friends exist.])],
-     [AC_MSG_WARN([Unable to find byte swapping functions; using built-in routines.])],
-     [[#include <libkern/OSByteOrder.h>]])],
+dnl AC_CHECK_DECL([htobe64],
+dnl   [AC_DEFINE([HAVE_HTOBE64], [1],
+dnl   [Define if htobe64 and friends exist.])],
+dnl   [AC_CHECK_DECL([OSSwapHostToBigInt64],
+dnl      [AC_DEFINE([HAVE_OSX_SWAP], [1],
+dnl         [Define if OSSwapHostToBigInt64 and friends exist.])],
+dnl      [AC_MSG_WARN([Unable to find byte swapping functions; using built-in routines.])],
+dnl      [[#include <libkern/OSByteOrder.h>]])],
+
+AC_CHECK_DECLS([be64toh, betoh64], [], [],
   [[#if defined(HAVE_ENDIAN_H)
 #include <endian.h>
 #elif defined(HAVE_SYS_ENDIAN_H)
+#include <sys/types.h>
 #include <sys/endian.h>
 #endif]])
 
@@ -368,10 +421,23 @@ AC_CHECK_DECL([getline],
   [Define if getline exists.])],
   , [[#include <stdio.h>]])
 
+AS_IF([test x"$ac_cv_have_decl_be64toh" != xyes &&
+       test x"$ac_cv_have_decl_betoh64" != xyes],
+  [AC_CHECK_DECL([OSSwapHostToBigInt64],
+     [AC_DEFINE([HAVE_OSX_SWAP], [1],
+        [Define if OSSwapHostToBigInt64 and friends exist.])],
+     [AC_MSG_WARN([Unable to find byte swapping functions; using built-in routines.])],
+     [[#include <libkern/OSByteOrder.h>]])])
+
 AC_CHECK_DECL([IP_MTU_DISCOVER],
   [AC_DEFINE([HAVE_IP_MTU_DISCOVER], [1],
      [Define if IP_MTU_DISCOVER is a valid sockopt.])],
-  , [[#include <netinet/ip.h>]])
+  , [[#include <netinet/in.h>]])
+
+AC_CHECK_DECL([IP_RECVTOS],
+  [AC_DEFINE([HAVE_IP_RECVTOS], [1],
+     [Define if IP_RECVTOS is a valid sockopt.])],
+  , [[#include <netinet/in.h>]])
 
 AC_CHECK_DECL([__STDC_ISO_10646__],
   [],
@@ -387,11 +453,19 @@ AC_CHECK_DECL([IUTF8],
 # Checks for protobuf
 PKG_CHECK_MODULES([protobuf], [protobuf])
 
+# Bash completion needs to ask where it goes if >= 2.0 is installed.
+AS_IF([test "$install_completion" != no],
+  [PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
+     [if test "$prefix" = "NONE"; then
+        completions="`pkg-config --variable=completionsdir bash-completion`"
+      else
+        completions="`pkg-config --define-variable=prefix=$prefix --variable=completionsdir bash-completion`"
+      fi],
+     [completions="${sysconfdir}/bash_completion.d"])
+   AC_SUBST([completions])])
+
 AC_CONFIG_FILES([
   Makefile
-  third/Makefile
-  third/libstddjb/Makefile
-  third/poll/Makefile
   src/Makefile
   src/crypto/Makefile
   src/frontend/Makefile
@@ -404,5 +478,14 @@ AC_CONFIG_FILES([
   src/examples/Makefile
   src/tests/Makefile
   man/Makefile
+  conf/Makefile
 ])
 AC_OUTPUT
+
+AC_MSG_NOTICE([ === Configuration results ===])
+AC_MSG_NOTICE([Version:             $PACKAGE_VERSION])
+AC_MSG_NOTICE([c++ compiler:        $CXX])
+AC_MSG_NOTICE([Warning CXXFLAGS:    $WARNING_CXXFLAGS])
+AC_MSG_NOTICE([Picky CXXFLAGS:      $PICKY_CXXFLAGS])
+AC_MSG_NOTICE([Harden CFLAGS:       $HARDEN_CFLAGS])
+AC_MSG_NOTICE([ =============================])

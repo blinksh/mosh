@@ -2,7 +2,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH MOSH 1 "February 2012"
+.TH MOSH 1 "April 2013"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -92,6 +92,13 @@ command to run server helper on remote machine (default: "mosh-server")
 The server helper is unprivileged and can be installed in the user's
 home directory.
 
+This option can be used to set environment variables for the server by
+using the
+.BR env (1)
+command to wrap the actual server command.  See
+.BR mosh-server (1)
+for available environment variables.
+
 .TP
 .B \-\-ssh=\fICOMMAND\fP
 OpenSSH command to remotely execute mosh-server on remote machine (default: "ssh")
@@ -121,23 +128,103 @@ Synonym for \-\-predict=always
 Synonym for \-\-predict=never
 
 .TP
-.B \-p \fINUM\fP, \-\-port=\fINUM\fP
-Use a particular server-side UDP port, for example, if this is the
+.B --family=\fIFAMILY\fP
+Force the use of a particular address family, which defaults to `inet'
+(IPv4), and can also be `inet6' (IPv6; requires IO::Socket::IP or
+IO::Socket::INET6).
+
+.TP
+.B -4
+Synonym for \-\-family=inet
+
+.TP
+.B -6
+Synonym for \-\-family=inet6
+
+.TP
+.B \-p \fIPORT\fP[:\fIPORT2\fP], \-\-port=\fIPORT\fP[:\fIPORT2\fP]
+Use a particular server-side UDP port or port range,
+for example, if this is the
 only port that is forwarded through a firewall to the
 server. Otherwise, \fBmosh\fP will choose a port between 60000 and
 61000.
 
-.SH ESCAPE SEQUENCE
+.TP
+.B \-\-bind\-server={ssh|any|\fIIP\fP}
+Control the IP address that the \fBmosh-server\fP binds to.
 
-The escape sequence to shut down the connection is \fBCtrl-^ .\fP
-(typically typed with Ctrl-Shift-6, then a period). To send a literal
-Ctrl-^, type \fBCtrl-^ ^\fP.
+The default is `ssh', in which case the server will reply from the IP
+address that the SSH connection came from (as found in the
+\fBSSH_CONNECTION\fP environment variable). This is useful for
+multihomed servers.
+
+With \-\-bind\-server=any, the server will reply on the default interface
+and will not bind to a particular IP address. This can be useful if
+the connection is made through \fBsslh\fP or another tool that makes
+the SSH connection appear to come from localhost.
+
+With \-\-bind\-server=\fIIP\fP, the server will attempt to bind to the
+specified IP address.
+
+.TP
+.B \-\-no\-init
+Do not send the \fBsmcup\fP initialization string and \fBrmcup\fP
+deinitialization string to the client's terminal. On many terminals
+this disables alternate screen mode.
+
+.TP
+.B \-\-local
+Invoke \fBmosh-server\fP locally, without using \fBssh\fP.  This
+option requires the \fBhost\fP argument to be a local, numeric
+IPv4/IPv6 address.  This option is useful for testing.
+
+.SH ESCAPE SEQUENCES
+
+The default escape character used by Mosh is ASCII RS (decimal 30).
+This is typically typed as \fBCtrl-^\fP or \fBCtrl-Shift-6\fP, on US
+English keyboards.  Users of non-English keyboards may find it
+difficult or impossible to type the default escape character, and may
+need to change the escape character.  See the description of
+MOSH_ESCAPE_KEY, below.  In this description, the configured escape
+character is represented as \fBEsc\fP.
+
+There are two slightly different modes for escape sequences, depending
+whether the escape character is printable or not.
+
+If the escape character is a printable character, it must be prefixed
+with a newline, similar to \fBOpenSSH\fP.  To send the escape character
+itself, type it twice.  If the escape character is set to \fB~\fP,
+\fBmosh\fP will behave much like \fBOpenSSH\fP.
+
+If the escape character is a non-printable control character, no
+prefix is used and the escape character is recognized at any time.  To
+send the escape character itself, type the escape character, then its
+corresponding ASCII character (for \fBCtrl-^\fP you would type \fB^\fP,
+for \fBCtrl-B\fP you would type \fBB\fP).
+
+The escape sequence to shut down the connection is
+\fBEsc .\fP. The sequence \fBEsc Ctrl-Z\fP suspends the client.
+Any other sequence passes both characters through to the server.
 
 .SH ENVIRONMENT VARIABLES
+These variables are not actually interpreted by
+.BR mosh (1)
+itself, but are passed through to
+.BR mosh-server (1).
+They are described here for ease of use.
+
+.TP
+.B MOSH_ESCAPE_KEY
+When set, this configures the escape character used for local
+commands.  The escape character may be set to any ASCII character in
+the range 1-127.  The variable must be set with a single literal ASCII
+character.  Control characters are set with the actual ASCII
+control character, not with a printable representation such as "^B".
 
 .TP
 .B MOSH_PREDICTION_DISPLAY
-Controls local echo as described above.
+Controls local echo as described above.  The command-line flag
+overrides this variable.
 
 .TP
 .B MOSH_TITLE_NOPREFIX

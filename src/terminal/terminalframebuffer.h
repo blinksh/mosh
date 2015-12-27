@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef TERMINALFB_HPP
@@ -30,7 +44,7 @@
 namespace Terminal {
   class Renditions {
   public:
-    bool bold, underlined, blink, inverse, invisible;
+    bool bold, italic, underlined, blink, inverse, invisible;
     int foreground_color;
     int background_color;
 
@@ -44,7 +58,7 @@ namespace Terminal {
 
     bool operator==( const Renditions &x ) const
     {
-      return (bold == x.bold) && (underlined == x.underlined)
+      return (bold == x.bold) && (italic == x.italic) && (underlined == x.underlined)
 	&& (blink == x.blink) && (inverse == x.inverse)
 	&& (invisible == x.invisible) && (foreground_color == x.foreground_color)
 	&& (background_color == x.background_color);
@@ -88,7 +102,7 @@ namespace Terminal {
 	       && (wrap == x.wrap) );
     }
 
-    wchar_t debug_contents( void ) const;
+    wint_t debug_contents( void ) const;
 
     bool is_blank( void ) const
     {
@@ -97,7 +111,7 @@ namespace Terminal {
 						|| (contents.front() == 0xA0) ) ) );
     }
 
-    bool contents_match ( const Cell& other ) const
+    bool contents_match ( const Cell &other ) const
     {
       return ( is_blank() && other.is_blank() )
              || ( contents == other.contents );
@@ -175,6 +189,26 @@ namespace Terminal {
     bool insert_mode;
     bool cursor_visible;
     bool reverse_video;
+    bool bracketed_paste;
+
+    enum MouseReportingMode {
+      MOUSE_REPORTING_NONE = 0,
+      MOUSE_REPORTING_X10 = 9,
+      MOUSE_REPORTING_VT220 = 1000,
+      MOUSE_REPORTING_VT220_HILIGHT = 1001,
+      MOUSE_REPORTING_BTN_EVENT = 1002,
+      MOUSE_REPORTING_ANY_EVENT = 1003
+    } mouse_reporting_mode;
+
+    bool mouse_focus_event;       // 1004
+    bool mouse_alternate_scroll;  // 1007
+
+    enum MouseEncodingMode {
+      MOUSE_ENCODING_DEFAULT = 0,
+      MOUSE_ENCODING_UTF8 = 1005,
+      MOUSE_ENCODING_SGR = 1006,
+      MOUSE_ENCODING_URXVT = 1015
+    } mouse_encoding_mode;
 
     bool application_mode_cursor_keys;
 
@@ -194,15 +228,15 @@ namespace Terminal {
     void clear_tab( int col );
     void clear_default_tabs( void ) { default_tabs = false; }
     /* Default tabs can't be restored without resetting the draw state. */
-    int get_next_tab( void );
+    int get_next_tab( void ) const;
 
     void set_scrolling_region( int top, int bottom );
 
     int get_scrolling_region_top_row( void ) const { return scrolling_region_top_row; }
     int get_scrolling_region_bottom_row( void ) const { return scrolling_region_bottom_row; }
 
-    int limit_top( void );
-    int limit_bottom( void );
+    int limit_top( void ) const;
+    int limit_bottom( void ) const;
 
     void set_foreground_color( int x ) { renditions.set_foreground_color( x ); }
     void set_background_color( int x ) { renditions.set_background_color( x ); }
@@ -223,7 +257,10 @@ namespace Terminal {
       /* only compare fields that affect display */
       return ( width == x.width ) && ( height == x.height ) && ( cursor_col == x.cursor_col )
 	&& ( cursor_row == x.cursor_row ) && ( cursor_visible == x.cursor_visible ) &&
-	( reverse_video == x.reverse_video ) && ( renditions == x.renditions );
+	( reverse_video == x.reverse_video ) && ( renditions == x.renditions ) &&
+  ( bracketed_paste == x.bracketed_paste ) && ( mouse_reporting_mode == x.mouse_reporting_mode ) &&
+  ( mouse_focus_event == x.mouse_focus_event ) && ( mouse_alternate_scroll == x.mouse_alternate_scroll) &&
+  ( mouse_encoding_mode == x.mouse_encoding_mode );
     }
   };
 
@@ -234,6 +271,7 @@ namespace Terminal {
     std::deque<wchar_t> icon_name;
     std::deque<wchar_t> window_title;
     unsigned int bell_count;
+    bool title_initialized; /* true if the window title has been set via an OSC */
 
     Row newrow( void ) { return Row( ds.get_width(), ds.get_background_rendition() ); }
 
@@ -297,6 +335,8 @@ namespace Terminal {
     void reset( void );
     void soft_reset( void );
 
+    void set_title_initialized( void ) { title_initialized = true; }
+    bool is_title_initialized( void ) const { return title_initialized; }
     void set_icon_name( const std::deque<wchar_t> &s ) { icon_name = s; }
     void set_window_title( const std::deque<wchar_t> &s ) { window_title = s; }
     const std::deque<wchar_t> & get_icon_name( void ) const { return icon_name; }

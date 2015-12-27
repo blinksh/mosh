@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <assert.h>
@@ -60,13 +74,15 @@ string Fragment::tostring( void )
 
 Fragment::Fragment( string &x )
   : id( -1 ), fragment_num( -1 ), final( false ), initialized( true ),
-    contents( x.begin() + frag_header_len, x.end() )
+    contents()
 {
-  assert( x.size() >= frag_header_len );
+  fatal_assert( x.size() >= frag_header_len );
+  contents = string( x.begin() + frag_header_len, x.end() );
 
-  uint64_t *data64 = (uint64_t *)x.data();
+  uint64_t data64;
   uint16_t *data16 = (uint16_t *)x.data();
-  id = be64toh( data64[ 0 ] );
+  memcpy( &data64, x.data(), sizeof( data64 ) );
+  id = be64toh( data64 );
   fragment_num = be16toh( data16[ 4 ] );
   final = ( fragment_num & 0x8000 ) >> 15;
   fragment_num &= 0x7FFF;
@@ -132,7 +148,7 @@ Instruction FragmentAssembly::get_assembly( void )
   return ret;
 }
 
-bool Fragment::operator==( const Fragment &x )
+bool Fragment::operator==( const Fragment &x ) const
 {
   return ( id == x.id ) && ( fragment_num == x.fragment_num ) && ( final == x.final )
     && ( initialized == x.initialized ) && ( contents == x.contents );

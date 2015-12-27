@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <stdio.h>
@@ -30,6 +44,19 @@ static const Renditions & initial_rendition( void )
   return blank;
 }
 
+std::string Display::open() const
+{
+  return std::string( smcup ? smcup : "" ) + std::string( "\033[?1h" );
+}
+
+std::string Display::close() const
+{
+  return std::string( "\033[?1l\033[0m\033[?25h"
+		      "\033[?1003l\033[?1002l\033[?1001l\033[?1000l"
+		      "\033[?1015l\033[?1006l\033[?1005l" ) +
+    std::string( rmcup ? rmcup : "" );
+}
+
 std::string Display::new_frame( bool initialized, const Framebuffer &last, const Framebuffer &f ) const
 {
   FrameState frame( last );
@@ -42,7 +69,7 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
   }
 
   /* has icon name or window title changed? */
-  if ( has_title &&
+  if ( has_title && f.is_title_initialized() &&
        ( (!initialized)
          || (f.get_icon_name() != frame.last_frame.get_icon_name())
          || (f.get_window_title() != frame.last_frame.get_window_title()) ) ) {
@@ -54,10 +81,11 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
       for ( std::deque<wchar_t>::const_iterator i = window_title.begin();
             i != window_title.end();
             i++ ) {
-	snprintf( tmp, 64, "%lc", *i );
+	snprintf( tmp, 64, "%lc", (wint_t)*i );
 	frame.append( tmp );
       }
-      frame.append( "\033\\" );
+      frame.append( "\007" );
+      /* ST is more correct, but BEL more widely supported */
     } else {
       /* write Icon Name */
       frame.append( "\033]1;" );
@@ -65,20 +93,20 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
       for ( std::deque<wchar_t>::const_iterator i = icon_name.begin();
 	    i != icon_name.end();
 	    i++ ) {
-	snprintf( tmp, 64, "%lc", *i );
+	snprintf( tmp, 64, "%lc", (wint_t)*i );
 	frame.append( tmp );
       }
-      frame.append( "\033\\" );
+      frame.append( "\007" );
 
       frame.append( "\033]2;" );
       const std::deque<wchar_t> &window_title( f.get_window_title() );
       for ( std::deque<wchar_t>::const_iterator i = window_title.begin();
 	    i != window_title.end();
 	    i++ ) {
-	snprintf( tmp, 64, "%lc", *i );
+	snprintf( tmp, 64, "%lc", (wint_t)*i );
 	frame.append( tmp );
       }
-      frame.append( "\033\\" );
+      frame.append( "\007" );
     }
 
   }
@@ -118,7 +146,7 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
     int lines_scrolled = 0;
     int scroll_height = 0;
 
-    for ( int row = 0; row < f.ds.get_height(); row++ ) {
+    for ( int row = 0; row < frame.last_frame.ds.get_height(); row++ ) {
       if ( *(f.get_row( 0 )) == *(frame.last_frame.get_row( row )) ) {
 	/* found a scroll */
 	lines_scrolled = row;
@@ -261,6 +289,53 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
     frame.current_rendition = f.ds.get_renditions();
   }
 
+  /* has bracketed paste mode changed? */
+  if ( (!initialized)
+       || (f.ds.bracketed_paste != frame.last_frame.ds.bracketed_paste) ) {
+    frame.append( f.ds.bracketed_paste ? "\033[?2004h" : "\033[?2004l" );
+  }
+
+  /* has mouse reporting mode changed? */
+  if ( (!initialized)
+       || (f.ds.mouse_reporting_mode != frame.last_frame.ds.mouse_reporting_mode) ) {
+    if (f.ds.mouse_reporting_mode == DrawState::MOUSE_REPORTING_NONE) {
+      frame.append("\033[?1003l");
+      frame.append("\033[?1002l");
+      frame.append("\033[?1001l");
+      frame.append("\033[?1000l");
+    } else {
+      if (frame.last_frame.ds.mouse_reporting_mode != DrawState::MOUSE_REPORTING_NONE) {
+        snprintf(tmp, sizeof(tmp), "\033[?%dl", frame.last_frame.ds.mouse_reporting_mode);
+        frame.append(tmp);
+      }
+      snprintf(tmp, sizeof(tmp), "\033[?%dh", f.ds.mouse_reporting_mode);
+      frame.append(tmp);
+    }
+  }
+
+  /* has mouse focus mode changed? */
+  if ( (!initialized)
+       || (f.ds.mouse_focus_event != frame.last_frame.ds.mouse_focus_event) ) {
+    frame.append( f.ds.mouse_focus_event ? "\033[?1004h" : "\033[?1004l" );
+  }
+
+  /* has mouse encoding mode changed? */
+  if ( (!initialized)
+       || (f.ds.mouse_encoding_mode != frame.last_frame.ds.mouse_encoding_mode) ) {
+    if (f.ds.mouse_encoding_mode == DrawState::MOUSE_ENCODING_DEFAULT) {
+      frame.append("\033[?1015l");
+      frame.append("\033[?1006l");
+      frame.append("\033[?1005l");
+    } else {
+      if (frame.last_frame.ds.mouse_encoding_mode != DrawState::MOUSE_ENCODING_DEFAULT) {
+        snprintf(tmp, sizeof(tmp), "\033[?%dl", frame.last_frame.ds.mouse_encoding_mode);
+        frame.append(tmp);
+      }
+      snprintf(tmp, sizeof(tmp), "\033[?%dh", f.ds.mouse_encoding_mode);
+      frame.append(tmp);
+    }
+  }
+
   return frame.str;
 }
 
@@ -346,7 +421,7 @@ void Display::put_cell( bool initialized, FrameState &frame, const Framebuffer &
   for ( std::vector<wchar_t>::const_iterator i = cell->contents.begin();
 	i != cell->contents.end();
 	i++ ) {
-    snprintf( tmp, 64, "%lc", *i );
+    snprintf( tmp, 64, "%lc", (wint_t)*i );
     frame.append( tmp );
   }
 

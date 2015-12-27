@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <string.h>
@@ -22,15 +36,15 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/resource.h>
+#include <fstream>
 
 #include "byteorder.h"
 #include "crypto.h"
 #include "base64.h"
+#include "prng.h"
 
 using namespace std;
 using namespace Crypto;
-
-const char rdev[] = "/dev/urandom";
 
 long int myatoi( const char *str )
 {
@@ -91,7 +105,7 @@ Base64Key::Base64Key( string printable_key )
   string base64 = printable_key + "==";
 
   size_t len = 16;
-  if ( !base64_decode( base64.data(), 24, (char *)&key[ 0 ], &len ) ) {
+  if ( !base64_decode( base64.data(), 24, key, &len ) ) {
     throw CryptoException( "Key must be well-formed base64." );
   }
 
@@ -107,30 +121,23 @@ Base64Key::Base64Key( string printable_key )
 
 Base64Key::Base64Key()
 {
-  FILE *devrandom = fopen( rdev, "r" );
-  if ( devrandom == NULL ) {
-    throw CryptoException( string( rdev ) + ": " + strerror( errno ) );
-  }
+  PRNG().fill( key, sizeof( key ) );
+}
 
-  if ( 1 != fread( key, 16, 1, devrandom ) ) {
-    throw CryptoException( "Could not read from " + string( rdev ) );
-  }
-
-  if ( 0 != fclose( devrandom ) ) {
-    throw CryptoException( string( rdev ) + ": " + strerror( errno ) );
-  }
+Base64Key::Base64Key(PRNG &prng)
+{
+  prng.fill( key, sizeof( key ) );
 }
 
 string Base64Key::printable_key( void ) const
 {
-  char base64[ 25 ];
+  char base64[ 24 ];
   
-  base64_encode( (char *)key, 16, base64, 25 );
+  base64_encode( key, 16, base64, 24 );
 
-  if ( (base64[ 24 ] != 0)
-       || (base64[ 23 ] != '=')
+  if ( (base64[ 23 ] != '=')
        || (base64[ 22 ] != '=') ) {
-    throw CryptoException( "Unexpected output from base64_encode." );
+    throw CryptoException( string( "Unexpected output from base64_encode: " ) + string( base64, 24 ) );
   }
 
   base64[ 22 ] = 0;

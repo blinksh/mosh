@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #ifndef CRYPTO_HPP
@@ -24,18 +38,24 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <exception>
 
 using std::string;
 
 long int myatoi( const char *str );
 
+class PRNG;
+
 namespace Crypto {
-  class CryptoException {
+
+  class CryptoException : public std::exception {
   public:
     string text;
     bool fatal;
     CryptoException( string s_text, bool s_fatal = false )
       : text( s_text ), fatal( s_fatal ) {};
+    const char *what() const throw () { return text.c_str(); }
+    ~CryptoException() throw () {}
   };
 
   /* 16-byte-aligned buffer, with length. */
@@ -57,8 +77,8 @@ namespace Crypto {
 
   private:
     /* Not implemented */
-    AlignedBuffer( const AlignedBuffer& );
-    AlignedBuffer& operator=( const AlignedBuffer& );
+    AlignedBuffer( const AlignedBuffer & );
+    AlignedBuffer & operator=( const AlignedBuffer & );
   };
 
   class Base64Key {
@@ -67,6 +87,7 @@ namespace Crypto {
 
   public:
     Base64Key(); /* random key */
+    Base64Key(PRNG &prng);
     Base64Key( string printable_key );
     string printable_key( void ) const;
     unsigned char *data( void ) { return key; }
@@ -83,8 +104,8 @@ namespace Crypto {
     Nonce( uint64_t val );
     Nonce( char *s_bytes, size_t len );
     
-    string cc_str( void ) { return string( (char *)( bytes + 4 ), 8 ); }
-    char *data( void ) { return bytes; }
+    string cc_str( void ) const { return string( bytes + 4, 8 ); }
+    const char *data( void ) const { return bytes; }
     uint64_t val( void );
   };
   

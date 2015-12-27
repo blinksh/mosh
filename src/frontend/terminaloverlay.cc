@@ -14,6 +14,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+    In addition, as a special exception, the copyright holders give
+    permission to link the code of portions of this program with the
+    OpenSSL library under certain conditions as described in each
+    individual source file, and distribute linked combinations including
+    the two.
+
+    You must obey the GNU General Public License in all respects for all
+    of the code used other than OpenSSL. If you modify file(s) with this
+    exception, you may extend this exception to your version of the
+    file(s), but you are not obligated to do so. If you do not wish to do
+    so, delete this exception statement from your version. If you delete
+    this exception statement from all source files in the program, then
+    also delete it here.
 */
 
 #include <algorithm>
@@ -152,10 +166,25 @@ void ConditionalCursorMove::apply( Framebuffer &fb, uint64_t confirmed_epoch ) c
 NotificationEngine::NotificationEngine()
   : last_word_from_server( timestamp() ),
     last_acked_state( timestamp() ),
+    escape_key_string(),
     message(),
     message_is_network_exception( false ),
-    message_expiration( -1 )
+    message_expiration( -1 ),
+    show_quit_keystroke( true )
 {}
+
+static std::string human_readable_duration( int num_seconds, const std::string &seconds_abbr ) {
+  char tmp[ 128 ];
+  if ( num_seconds < 60 ) {
+    snprintf( tmp, 128, "%d %s", num_seconds, seconds_abbr.c_str() );
+  } else if ( num_seconds < 3600 ) {
+    snprintf( tmp, 128, "%d:%02d", num_seconds / 60, num_seconds % 60 );
+  } else {
+    snprintf( tmp, 128, "%d:%02d:%02d", num_seconds / 3600,
+	      (num_seconds / 60) % 60, num_seconds % 60 );
+  }
+  return tmp;
+}
 
 void NotificationEngine::apply( Framebuffer &fb ) const
 {
@@ -205,15 +234,24 @@ void NotificationEngine::apply( Framebuffer &fb ) const
     explanation = reply_message;
   }
 
+  const static char blank[] = "";
+
+  const char *keystroke_str = show_quit_keystroke ? escape_key_string.c_str() : blank;
+
   if ( message.empty() && (!time_expired) ) {
     return;
   } else if ( message.empty() && time_expired ) {
-    swprintf( tmp, 128, L"mosh: Last %s %.0f seconds ago. [To quit: Ctrl-^ .]", explanation, time_elapsed );
+    swprintf( tmp, 128, L"mosh: Last %s %s ago.%s", explanation,
+	      human_readable_duration( static_cast<int>( time_elapsed ),
+				       "seconds" ).c_str(),
+	      keystroke_str );
   } else if ( (!message.empty()) && (!time_expired) ) {
-    swprintf( tmp, 128, L"mosh: %ls [To quit: Ctrl-^ .]", message.c_str() );
+    swprintf( tmp, 128, L"mosh: %ls%s", message.c_str(), keystroke_str );
   } else {
-    swprintf( tmp, 128, L"mosh: %ls (%.0f s without %s.) [To quit: Ctrl-^ .]", message.c_str(),
-	      time_elapsed, explanation );
+    swprintf( tmp, 128, L"mosh: %ls (%s without %s.)%s", message.c_str(),
+	      human_readable_duration( static_cast<int>( time_elapsed ),
+				       "s" ).c_str(),
+	      explanation, keystroke_str );
   }
 
   wstring string_to_draw( tmp );
@@ -325,7 +363,8 @@ void PredictionEngine::apply( Framebuffer &fb ) const
 {
   bool show = (display_preference != Never) && ( srtt_trigger
 						 || glitch_trigger
-						 || (display_preference == Always) );
+						 || (display_preference == Always)
+						 || (display_preference == Experimental) );
 
   if ( show ) {
     for ( cursors_type::const_iterator it = cursors.begin();
@@ -461,7 +500,11 @@ void PredictionEngine::cull( const Framebuffer &fb )
 		   );
 	  */
 
-	  kill_epoch( j->tentative_until_epoch, fb );
+	  if ( display_preference == Experimental ) {
+	    j->reset();
+	  } else {
+	    kill_epoch( j->tentative_until_epoch, fb );
+	  }
 	  /*
 	  if ( j->display_time != uint64_t(-1) ) {
 	    fprintf( stderr, "TIMING %ld - %ld (TENT)\n", time(NULL), now - j->display_time );
@@ -481,8 +524,12 @@ void PredictionEngine::cull( const Framebuffer &fb )
 	  }
 	  */
 
-	  reset();
-	  return;
+	  if ( display_preference == Experimental ) {
+	    j->reset();
+	  } else {
+	    reset();
+	    return;
+	  }
 	}
 	break;
       case Correct:
@@ -508,6 +555,16 @@ void PredictionEngine::cull( const Framebuffer &fb )
 	  if ( (glitch_trigger > 0) && (now - GLITCH_REPAIR_MININTERVAL >= last_quick_confirmation) ) {
 	    glitch_trigger--;
 	    last_quick_confirmation = now;
+	  }
+	}
+
+	/* match rest of row to the actual renditions */
+	{
+	  const Renditions &actual_renditions = fb.get_cell( i->row_num, j->col )->renditions;
+	  for ( overlay_cells_type::iterator k = j;
+		k != i->overlay_cells.end();
+		k++ ) {
+	    k->replacement.renditions = actual_renditions;
 	  }
 	}
 
@@ -548,8 +605,12 @@ void PredictionEngine::cull( const Framebuffer &fb )
 	       cursor().expiration_time,
 	       now );
       */
-      reset();
-      return;
+      if ( display_preference == Experimental ) {
+	cursors.clear();
+      } else {
+	reset();
+	return;
+      }
     }
   }
 
@@ -590,6 +651,8 @@ void PredictionEngine::new_user_byte( char the_byte, const Framebuffer &fb )
 {
   if ( display_preference == Never ) {
     return;
+  } else if ( display_preference == Experimental ) {
+    prediction_epoch = confirmed_epoch;
   }
 
   cull( fb );
@@ -713,6 +776,18 @@ void PredictionEngine::new_user_byte( char the_byte, const Framebuffer &fb )
 	cell.tentative_until_epoch = prediction_epoch;
 	cell.expire( local_frame_sent + 1, now );
 	cell.replacement.renditions = fb.ds.get_renditions();
+
+	/* heuristic: match renditions of character to the left */
+	if ( cursor().col > 0 ) {
+	  ConditionalOverlayCell &prev_cell = the_row.overlay_cells[ cursor().col - 1 ];
+	  const Cell *prev_cell_actual = fb.get_cell( cursor().row, cursor().col - 1 );
+	  if ( prev_cell.active && (!prev_cell.unknown) ) {
+	    cell.replacement.renditions = prev_cell.replacement.renditions;
+	  } else {
+	    cell.replacement.renditions = prev_cell_actual->renditions;
+	  }
+	}
+
 	cell.replacement.contents.clear();
 	cell.replacement.contents.push_back( ch );
 	cell.original_contents.push_back( *fb.get_cell( cursor().row, cursor().col ) );
@@ -810,7 +885,9 @@ void PredictionEngine::newline_carriage_return( const Framebuffer &fb )
 
 void PredictionEngine::become_tentative( void )
 {
-  prediction_epoch++;
+  if ( display_preference != Experimental ) {
+    prediction_epoch++;
+  }
 
   /*
   fprintf( stderr, "Now tentative in epoch %lu (confirmed=%lu)\n",
