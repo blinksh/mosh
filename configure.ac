@@ -142,6 +142,12 @@ AC_ARG_ENABLE([server],
   [build_server="yes"])
 AM_CONDITIONAL([BUILD_SERVER], [test x"$build_server" != xno])
 
+AC_ARG_ENABLE([ios-controller],
+  [AS_HELP_STRING([--enable-ios-controller], [Build the mosh iOS controller library @<:@no@:>@])],
+  [build_ios_controller="$enableval"],
+  [build_ios_controller="no"])
+AM_CONDITIONAL([BUILD_IOS_CONTROLLER], [test x"$build_ios_controller" != xno])
+
 AC_ARG_ENABLE([examples],
   [AS_HELP_STRING([--enable-examples], [Build the miscellaneous programs in src/examples @<:@no@:>@])],
   [build_examples="$enableval"],
