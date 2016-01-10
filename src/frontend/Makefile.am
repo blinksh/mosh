@@ -23,4 +23,4 @@ endif
 mosh_client_SOURCES = mosh-client.cc stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
 mosh_server_SOURCES = mosh-server.cc
 mosh_SOURCES = mosh.cc stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
-libmoshios_a_SOURCES = mosh-ios-controller.cc
+libmoshios_a_SOURCES = mosh-ios-controller.cc terminalbridge.cc terminaloverlay.cc terminaloverlay.h
