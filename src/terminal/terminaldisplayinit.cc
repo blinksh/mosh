@@ -57,11 +57,13 @@
 #else
 #  error "SysV or X/Open-compatible Curses header file required"
 #endif
+
 #include <stdlib.h>
 #include <string.h>
 
 using namespace Terminal;
 
+#if !defined IOS_CONTROLLER
 bool Display::ti_flag( const char *capname )
 {
   int val = tigetflag( const_cast<char *>( capname ) );

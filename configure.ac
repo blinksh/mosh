@@ -147,6 +147,7 @@ AC_ARG_ENABLE([ios-controller],
   [build_ios_controller="$enableval"],
   [build_ios_controller="no"])
 AM_CONDITIONAL([BUILD_IOS_CONTROLLER], [test x"$build_ios_controller" != xno])
+AS_IF([test x"$build_ios_controller" != xno], [AC_DEFINE([IOS_CONTROLLER], [1], [Define if compiling iOS controller])])
 
 AC_ARG_ENABLE([examples],
   [AS_HELP_STRING([--enable-examples], [Build the miscellaneous programs in src/examples @<:@no@:>@])],
