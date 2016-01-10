@@ -14,9 +14,29 @@
 
 #include "terminalbridge.h"
 
+#include "swrite.h"
+#include "completeterminal.h"
+#include "user.h"
+#include "fatal_assert.h"
 #include "locale_utils.h"
+#include "pty_compat.h"
+#include "select.h"
+#include "timestamp.h"
+
+#include "networktransport.cc"
 
 using namespace std;
+
+
+void TerminalBridge::resume( void )
+{
+  /* Put terminal in application-cursor-key mode */
+  // TODO
+  //swrite( STDOUT_FILENO, display.open().c_str() );
+
+  /* Flag that outer terminal state is unknown */
+  repaint_requested = true;
+}
 
 void TerminalBridge::init( void )
 {
@@ -126,5 +146,349 @@ void TerminalBridge::shutdown( void )
   }
 }
 
-void TerminalBridge::output_new_frame() {
+void TerminalBridge::main_init( void )
+{
+  Select &sel = Select::get_instance();
+  sel.add_signal( SIGWINCH );
+  sel.add_signal( SIGTERM );
+  sel.add_signal( SIGINT );
+  sel.add_signal( SIGHUP );
+  sel.add_signal( SIGPIPE );
+  sel.add_signal( SIGCONT );
+
+  /* local state */
+// TODO
+//  local_framebuffer = new Terminal::Framebuffer( window_size.ws_col, window_size.ws_row );
+  //new_state = new Terminal::Framebuffer( 1, 1 );
+
+  /* open network */
+  Network::UserStream blank;
+  Terminal::Complete local_terminal( window_size.ws_col, window_size.ws_row );
+  network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal,
+									       key.c_str(), ip.c_str(), port.c_str() );
+
+  network->set_send_delay( 1 ); /* minimal delay on outgoing keystrokes */
+
+  /* tell server the size of the terminal */
+  network->get_current_state().push_back( Parser::Resize( window_size.ws_col, window_size.ws_row ) );
+}
+
+void TerminalBridge::output_new_frame( void ) {
+  if ( !network ) { /* clean shutdown even when not initialized */
+    return;
+  }
+
+  // /* fetch target state */
+  // *new_state = network->get_latest_remote_state().state.get_fb();
+
+  // /* apply local overlays */
+  // overlays.apply( *new_state );
+
+  // /* apply any mutations */
+  // display.downgrade( *new_state );
+
+  /* calculate minimal difference from where we are */
+// TODO
+
+  // const string diff( display.new_frame( !repaint_requested,
+  //       				*local_framebuffer,
+  //       				*new_state ) );
+  // swrite( STDOUT_FILENO, diff.data(), diff.size() );
+
+  // repaint_requested = false;
+
+  // /* switch pointers */
+  // Terminal::Framebuffer *tmp = new_state;
+  // new_state = local_framebuffer;
+  // local_framebuffer = tmp;
+}
+
+void TerminalBridge::process_network_input( void )
+{
+  network->recv();
+
+  /* Now give hints to the overlays */
+  overlays.get_notification_engine().server_heard( network->get_latest_remote_state().timestamp );
+  overlays.get_notification_engine().server_acked( network->get_sent_state_acked_timestamp() );
+
+  overlays.get_prediction_engine().set_local_frame_acked( network->get_sent_state_acked() );
+  overlays.get_prediction_engine().set_send_interval( network->send_interval() );
+  overlays.get_prediction_engine().set_local_frame_late_acked( network->get_latest_remote_state().state.get_echo_ack() );
+}
+
+bool TerminalBridge::process_user_input( int fd )
+{
+  const int buf_size = 16384;
+  char buf[ buf_size ];
+
+  /* fill buffer if possible */
+  ssize_t bytes_read = read( fd, buf, buf_size );
+  if ( bytes_read == 0 ) { /* EOF */
+    return false;
+  } else if ( bytes_read < 0 ) {
+    perror( "read" );
+    return false;
+  }
+
+  if ( !network->shutdown_in_progress() ) {
+    overlays.get_prediction_engine().set_local_frame_sent( network->get_sent_state_last() );
+
+    for ( int i = 0; i < bytes_read; i++ ) {
+      char the_byte = buf[ i ];
+
+//      overlays.get_prediction_engine().new_user_byte( the_byte, *local_framebuffer );
+
+      if ( quit_sequence_started ) {
+	if ( the_byte == '.' ) { /* Quit sequence is Ctrl-^ . */
+	  if ( network->has_remote_addr() && (!network->shutdown_in_progress()) ) {
+	    overlays.get_notification_engine().set_notification_string( wstring( L"Exiting on user request..." ), true );
+	    network->start_shutdown();
+	    return true;
+	  } else {
+	    return false;
+	  }
+	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
+	  /* Restore terminal and terminal-driver state */
+//	  swrite( STDOUT_FILENO, display.close().c_str() );
+
+	  // if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
+	  //   perror( "tcsetattr" );
+	  //   exit( 1 );
+	  // }
+
+	  // printf( "\n\033[37;44m[mosh is suspended.]\033[m\n" );
+
+	  // fflush( NULL );
+
+	  // /* actually suspend */
+	  // kill( 0, SIGSTOP );
+
+	  // resume();
+	} else if ( (the_byte == escape_pass_key) || (the_byte == escape_pass_key2) ) {
+	  /* Emulation sequence to type escape_key is escape_key +
+	     escape_pass_key (that is escape key without Ctrl) */
+	  network->get_current_state().push_back( Parser::UserByte( escape_key ) );
+	} else {
+	  /* Escape key followed by anything other than . and ^ gets sent literally */
+	  network->get_current_state().push_back( Parser::UserByte( escape_key ) );
+	  network->get_current_state().push_back( Parser::UserByte( the_byte ) );
+	}
+
+	quit_sequence_started = false;
+
+	if ( overlays.get_notification_engine().get_notification_string() == escape_key_help ) {
+	  overlays.get_notification_engine().set_notification_string( L"" );
+	}
+
+	continue;
+      }
+
+      quit_sequence_started = (escape_key > 0) && (the_byte == escape_key) && (lf_entered || (! escape_requires_lf));
+      if ( quit_sequence_started ) {
+	lf_entered = false;
+	overlays.get_notification_engine().set_notification_string( escape_key_help, true, false );
+	continue;
+      }
+
+      lf_entered = ( (the_byte == 0x0A) || (the_byte == 0x0D) ); /* LineFeed, Ctrl-J, '\n' or CarriageReturn, Ctrl-M, '\r' */
+
+      if ( the_byte == 0x0C ) { /* Ctrl-L */
+	repaint_requested = true;
+      }
+
+      network->get_current_state().push_back( Parser::UserByte( the_byte ) );
+    }
+  }
+
+  return true;
+}
+
+// bool STMClient::process_resize( void )
+// {
+//   /* get new size */
+//   if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
+//     perror( "ioctl TIOCGWINSZ" );
+//     return false;
+//   }
+
+//   /* tell remote emulator */
+//   Parser::Resize res( window_size.ws_col, window_size.ws_row );
+
+//   if ( !network->shutdown_in_progress() ) {
+//     network->get_current_state().push_back( res );
+//   }
+
+//   /* note remote emulator will probably reply with its own Resize to adjust our state */
+
+//   /* tell prediction engine */
+//   overlays.get_prediction_engine().reset();
+
+//   return true;
+// }
+
+bool TerminalBridge::main( void )
+{
+  /* initialize signal handling and structures */
+  main_init();
+
+  /* prepare to poll for events */
+  Select &sel = Select::get_instance();
+
+  while ( 1 ) {
+    try {
+      output_new_frame();
+
+      int wait_time = min( network->wait_time(), overlays.wait_time() );
+
+      /* Handle startup "Connecting..." message */
+      if ( still_connecting() ) {
+	wait_time = min( 250, wait_time );
+      }
+
+      /* poll for events */
+      /* network->fd() can in theory change over time */
+      sel.clear_fds();
+      std::vector< int > fd_list( network->fds() );
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	sel.add_fd( *it );
+      }
+      sel.add_fd( STDIN_FILENO );
+
+      int active_fds = sel.select( wait_time );
+      if ( active_fds < 0 ) {
+	perror( "select" );
+	break;
+      }
+
+      bool network_ready_to_read = false;
+
+      for ( std::vector< int >::const_iterator it = fd_list.begin();
+	    it != fd_list.end();
+	    it++ ) {
+	if ( sel.read( *it ) ) {
+	  /* packet received from the network */
+	  /* we only read one socket each run */
+	  network_ready_to_read = true;
+	}
+
+	if ( sel.error( *it ) ) {
+	  /* network problem */
+	  break;
+	}
+      }
+
+      if ( network_ready_to_read ) {
+	process_network_input();
+      }
+
+      // if ( sel.read( STDIN_FILENO ) ) {
+      //   /* input from the user needs to be fed to the network */
+      //   if ( !process_user_input( STDIN_FILENO ) ) {
+      //     if ( !network->has_remote_addr() ) {
+      //       break;
+      //     } else if ( !network->shutdown_in_progress() ) {
+      //       overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
+      //       network->start_shutdown();
+      //     }
+      //   }
+      // }
+
+      // if ( sel.signal( SIGWINCH ) ) {
+      //   /* resize */
+      //   if ( !process_resize() ) { return false; }
+      // }
+
+      if ( sel.signal( SIGCONT ) ) {
+	resume();
+      }
+
+      if ( sel.signal( SIGTERM )
+           || sel.signal( SIGINT )
+           || sel.signal( SIGHUP )
+           || sel.signal( SIGPIPE ) ) {
+        /* shutdown signal */
+        if ( !network->has_remote_addr() ) {
+          break;
+        } else if ( !network->shutdown_in_progress() ) {
+          overlays.get_notification_engine().set_notification_string( wstring( L"Signal received, shutting down..." ), true );
+          network->start_shutdown();
+        }
+      }
+
+      if ( sel.error( STDIN_FILENO ) ) {
+	/* user problem */
+	if ( !network->has_remote_addr() ) {
+	  break;
+	} else if ( !network->shutdown_in_progress() ) {
+	  overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
+	  network->start_shutdown();
+	}
+      }
+
+      /* quit if our shutdown has been acknowledged */
+      if ( network->shutdown_in_progress() && network->shutdown_acknowledged() ) {
+	clean_shutdown = true;
+	break;
+      }
+
+      /* quit after shutdown acknowledgement timeout */
+      if ( network->shutdown_in_progress() && network->shutdown_ack_timed_out() ) {
+	break;
+      }
+
+      /* quit if we received and acknowledged a shutdown request */
+      if ( network->counterparty_shutdown_ack_sent() ) {
+	clean_shutdown = true;
+	break;
+      }
+
+      /* write diagnostic message if can't reach server */
+      if ( still_connecting()
+	   && (!network->shutdown_in_progress())
+	   && (timestamp() - network->get_latest_remote_state().timestamp > 250) ) {
+	if ( timestamp() - network->get_latest_remote_state().timestamp > 15000 ) {
+	  if ( !network->shutdown_in_progress() ) {
+	    overlays.get_notification_engine().set_notification_string( wstring( L"Timed out waiting for server..." ), true );
+	    network->start_shutdown();
+	  }
+	} else {
+	  overlays.get_notification_engine().set_notification_string( connecting_notification );
+	}
+      } else if ( (network->get_remote_state_num() != 0)
+		  && (overlays.get_notification_engine().get_notification_string()
+		      == connecting_notification) ) {
+	overlays.get_notification_engine().set_notification_string( L"" );
+      }
+
+      network->tick();
+
+      const Network::NetworkException *exn = network->get_send_exception();
+      if ( exn ) {
+        overlays.get_notification_engine().set_network_exception( *exn );
+      } else {
+        overlays.get_notification_engine().clear_network_exception();
+      }
+    } catch ( const Network::NetworkException &e ) {
+      if ( !network->shutdown_in_progress() ) {
+        overlays.get_notification_engine().set_network_exception( e );
+      }
+
+      struct timespec req;
+      req.tv_sec = 0;
+      req.tv_nsec = 200000000; /* 0.2 sec */
+      nanosleep( &req, NULL );
+      freeze_timestamp();
+    } catch ( const Crypto::CryptoException &e ) {
+      if ( e.fatal ) {
+        throw;
+      } else {
+        wchar_t tmp[ 128 ];
+        swprintf( tmp, 128, L"Crypto exception: %s", e.what() );
+        overlays.get_notification_engine().set_notification_string( wstring( tmp ) );
+      }
+    }
+  }
+  return clean_shutdown;
 }
