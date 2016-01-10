@@ -2,7 +2,6 @@
 #define TERMINAL_BRIDGE_HPP
 
 #include <sys/ioctl.h>
-#include <termios.h>
 #include <string>
 
 #include "completeterminal.h"
@@ -23,8 +22,6 @@ class TerminalBridge {
   bool escape_requires_lf;
   std::wstring escape_key_help;
 
-  struct termios saved_termios, raw_termios;
-
   struct winsize window_size;
 
   Overlay::OverlayManager overlays;
@@ -34,8 +31,6 @@ class TerminalBridge {
   bool repaint_requested, lf_entered, quit_sequence_started;
   bool clean_shutdown;
 
-
-  void init( void );
 
  public:
  TerminalBridge( const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
@@ -72,6 +67,17 @@ class TerminalBridge {
       delete network;
     }
   }
+
+  bool still_connecting( void ) const
+  {
+    /* Initially, network == NULL */
+    return network && ( network->get_remote_state_num() == 0 );
+  }
+
+  void init( void );
+  void shutdown( void );
+  void output_new_frame( void );
+
 };
 
 #endif

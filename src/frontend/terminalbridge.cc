@@ -16,6 +16,8 @@
 
 #include "locale_utils.h"
 
+using namespace std;
+
 void TerminalBridge::init( void )
 {
   if ( !is_utf8_locale() ) {
@@ -27,12 +29,11 @@ void TerminalBridge::init( void )
     int unused __attribute((unused)) = system( "locale" );
     exit( 1 );
   }
-/*
+
   // Add our name to window title
   if ( !getenv( "MOSH_TITLE_NOPREFIX" ) ) {
     overlays.set_title_prefix( wstring( L"[mosh] " ) );
   }
-*/
 
   /* Set terminal escape key. */
   const char *escape_key_env;
@@ -95,13 +96,35 @@ void TerminalBridge::init( void )
     }
     string tmp;
     tmp = string( escape_pass_name_buf );
-    std::wstring escape_pass_name = std::wstring(tmp.begin(), tmp.end());
+    wstring escape_pass_name = wstring(tmp.begin(), tmp.end());
     tmp = string( escape_key_name_buf );
-    std::wstring escape_key_name = std::wstring(tmp.begin(), tmp.end());
+    wstring escape_key_name = wstring(tmp.begin(), tmp.end());
     escape_key_help = L"Commands: Ctrl-Z suspends, \".\" quits, " + escape_pass_name + L" gives literal " + escape_key_name;
     overlays.get_notification_engine().set_escape_key_string( tmp );
   }
   wchar_t tmp[ 128 ];
   swprintf( tmp, 128, L"Nothing received from server on UDP port %s.", port.c_str() );
-  connecting_notification = std::wstring( tmp );
+  connecting_notification = wstring( tmp );
+}
+
+void TerminalBridge::shutdown( void )
+{
+  /* Restore screen state */
+  overlays.get_notification_engine().set_notification_string( wstring( L"" ) );
+  overlays.get_notification_engine().server_heard( Network::timestamp() );
+  overlays.set_title_prefix( wstring( L"" ) );
+  output_new_frame();
+
+  if ( still_connecting() ) {
+    fprintf( stderr, "\nmosh did not make a successful connection to %s:%s.\n", ip.c_str(), port.c_str() );
+    fprintf( stderr, "Please verify that UDP port %s is not firewalled and can reach the server.\n\n", port.c_str() );
+    fprintf( stderr, "(By default, mosh uses a UDP port between 60000 and 61000. The -p option\nselects a specific UDP port number.)\n" );
+  } else if ( network ) {
+    if ( !clean_shutdown ) {
+      fprintf( stderr, "\n\nmosh did not shut down cleanly. Please note that the\nmosh-server process may still be running on the server.\n" );
+    }
+  }
+}
+
+void TerminalBridge::output_new_frame() {
 }
