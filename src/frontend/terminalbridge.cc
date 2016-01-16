@@ -27,10 +27,13 @@
 
 
 extern "C" {
-    // TODO: Add output FD
-    TerminalBridge* mosh_create(const char *ip, const char* port, const char *key, const char* predict_mode) {
+    TerminalBridge* mosh_create(int outfd,
+                                const char *ip,
+                                const char* port,
+                                const char *key,
+                                const char* predict_mode) {
         TerminalBridge *bridge = NULL;
-        *bridge = TerminalBridge(ip, port, key, predict_mode);
+        *bridge = TerminalBridge(outfd, ip, port, key, predict_mode);
         return bridge;
     }
 
@@ -172,9 +175,8 @@ void TerminalBridge::main_init( void )
   sel.add_signal( SIGCONT );
 
   /* local state */
-// TODO
-//  local_framebuffer = new Terminal::Framebuffer( window_size.ws_col, window_size.ws_row );
-  //new_state = new Terminal::Framebuffer( 1, 1 );
+  local_framebuffer = new Terminal::Framebuffer( window_size.ws_col, window_size.ws_row );
+  new_state = new Terminal::Framebuffer( 1, 1 );
 
   /* open network */
   Network::UserStream blank;
@@ -193,29 +195,28 @@ void TerminalBridge::output_new_frame( void ) {
     return;
   }
 
-  // /* fetch target state */
-  // *new_state = network->get_latest_remote_state().state.get_fb();
+  /* fetch target state */
+  *new_state = network->get_latest_remote_state().state.get_fb();
 
-  // /* apply local overlays */
-  // overlays.apply( *new_state );
+  /* apply local overlays */
+  overlays.apply( *new_state );
 
-  // /* apply any mutations */
-  // display.downgrade( *new_state );
+  /* apply any mutations */
+  display.downgrade( *new_state );
 
   /* calculate minimal difference from where we are */
-// TODO
+  const string diff( display.new_frame( !repaint_requested,
+        				*local_framebuffer,
+        				*new_state ) );
+  /* Write to our output file descriptor */
+  swrite( outfd, diff.data(), diff.size() );
 
-  // const string diff( display.new_frame( !repaint_requested,
-  //       				*local_framebuffer,
-  //       				*new_state ) );
-  // swrite( STDOUT_FILENO, diff.data(), diff.size() );
+  repaint_requested = false;
 
-  // repaint_requested = false;
-
-  // /* switch pointers */
-  // Terminal::Framebuffer *tmp = new_state;
-  // new_state = local_framebuffer;
-  // local_framebuffer = tmp;
+  /* switch pointers */
+  Terminal::Framebuffer *tmp = new_state;
+  new_state = local_framebuffer;
+  local_framebuffer = tmp;
 }
 
 void TerminalBridge::process_network_input( void )

@@ -12,6 +12,8 @@
 
 class TerminalBridge {
  private:
+  int outfd;
+
   std::string ip;
   std::string port;
   std::string key;
@@ -24,8 +26,10 @@ class TerminalBridge {
 
   struct winsize window_size;
 
+  Terminal::Framebuffer *local_framebuffer, *new_state;
   Overlay::OverlayManager overlays;
   Network::Transport< Network::UserStream, Terminal::Complete > *network;
+  Terminal::Display display;
 
   std::wstring connecting_notification;
   bool repaint_requested, lf_entered, quit_sequence_started;
@@ -33,13 +37,16 @@ class TerminalBridge {
 
 
  public:
- TerminalBridge( const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
-   : ip( s_ip ), port( s_port ), key( s_key ),
+ TerminalBridge( const int s_outfd, const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
+   : outfd( s_outfd ), ip( s_ip ), port( s_port ), key( s_key ),
     escape_key( 0x1E ), escape_pass_key( '^' ), escape_pass_key2( '^' ),
     escape_requires_lf( false ), escape_key_help( L"?" ),
     window_size(),
+    local_framebuffer( NULL ),
+    new_state( NULL ),
     overlays(),
     network( NULL ),
+    display( true ), /* use TERM environment var to initialize display */
     connecting_notification(),
     repaint_requested( false ),
     lf_entered( false ),
