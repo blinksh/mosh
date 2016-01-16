@@ -155,3 +155,4 @@ Display::Display( bool use_environment )
     }
   }
 }
+#endif

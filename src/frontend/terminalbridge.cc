@@ -25,18 +25,33 @@
 
 #include "networktransport.cc"
 
-using namespace std;
 
+extern "C" {
+    // TODO: Add output FD
+    TerminalBridge* mosh_create(const char *ip, const char* port, const char *key, const char* predict_mode) {
+        TerminalBridge *bridge = NULL;
+        *bridge = TerminalBridge(ip, port, key, predict_mode);
+        return bridge;
+    }
 
-void TerminalBridge::resume( void )
-{
-  /* Put terminal in application-cursor-key mode */
-  // TODO
-  //swrite( STDOUT_FILENO, display.open().c_str() );
+    int mosh_main( TerminalBridge *bridge ) {
+        return 0;
+    }
 
-  /* Flag that outer terminal state is unknown */
-  repaint_requested = true;
+    int mosh_shutdown( TerminalBridge *bridge ) {
+        return 0;
+    }
+
+    int mosh_network_input( TerminalBridge *bridge ) {
+        return 0;
+    }
+
+    int mosh_user_input( int fd ) {
+        return 0;
+    }
 }
+
+using namespace std;
 
 void TerminalBridge::init( void )
 {
@@ -400,9 +415,9 @@ bool TerminalBridge::main( void )
       //   if ( !process_resize() ) { return false; }
       // }
 
-      if ( sel.signal( SIGCONT ) ) {
-	resume();
-      }
+      // if ( sel.signal( SIGCONT ) ) {
+      //   resume();
+      // }
 
       if ( sel.signal( SIGTERM )
            || sel.signal( SIGINT )
