@@ -12,7 +12,8 @@
 
 class TerminalBridge {
  private:
-  int outfd;
+  int in_fd;
+  int out_fd;
 
   std::string ip;
   std::string port;
@@ -37,8 +38,10 @@ class TerminalBridge {
 
 
  public:
- TerminalBridge( const int s_outfd, const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
-   : outfd( s_outfd ), ip( s_ip ), port( s_port ), key( s_key ),
+ TerminalBridge( const int s_infd, const int s_outfd,
+                 const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
+   : in_fd(s_infd), out_fd( s_outfd ),
+    ip( s_ip ), port( s_port ), key( s_key ),
     escape_key( 0x1E ), escape_pass_key( '^' ), escape_pass_key2( '^' ),
     escape_requires_lf( false ), escape_key_help( L"?" ),
     window_size(),

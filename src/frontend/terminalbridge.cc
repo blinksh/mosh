@@ -27,34 +27,59 @@
 
 
 extern "C" {
-    TerminalBridge* mosh_create(int outfd,
+    TerminalBridge* mosh_create(int infd,
+                                int outfd,
                                 const char *ip,
                                 const char* port,
                                 const char *key,
                                 const char* predict_mode) {
         TerminalBridge *bridge = NULL;
-        *bridge = TerminalBridge(outfd, ip, port, key, predict_mode);
+        *bridge = TerminalBridge(infd, outfd, ip, port, key, predict_mode);
         return bridge;
     }
 
     int mosh_main( TerminalBridge *bridge ) {
-        return 0;
-    }
+        int result = 0;
 
-    int mosh_shutdown( TerminalBridge *bridge ) {
-        return 0;
-    }
+        try {
+            bridge->init();
 
-    int mosh_network_input( TerminalBridge *bridge ) {
-        return 0;
-    }
+            try {
+                result = bridge->main();
+            } catch ( ... ) {
+                bridge->shutdown();
+                throw;
+            }
 
-    int mosh_user_input( int fd ) {
-        return 0;
+            bridge->shutdown();
+
+        } catch ( const Network::NetworkException &e ) {
+            fprintf( stderr, "Network exception: %s\r\n",
+                     e.what() );
+            result = 1;
+        } catch ( const Crypto::CryptoException &e ) {
+            fprintf( stderr, "Crypto exception: %s\r\n",
+                     e.what() );
+            result = 2;
+        } catch ( const std::exception &e ) {
+            fprintf( stderr, "Error: %s\r\n", e.what() );
+            result = 3;
+        }
+
+        return result;
     }
 }
 
 using namespace std;
+
+void TerminalBridge::resume( void )
+{
+  // /* Put terminal in application-cursor-key mode */
+  // swrite( STDOUT_FILENO, display.open().c_str() );
+
+  /* Flag that outer terminal state is unknown */
+  repaint_requested = true;
+}
 
 void TerminalBridge::init( void )
 {
@@ -209,7 +234,7 @@ void TerminalBridge::output_new_frame( void ) {
         				*local_framebuffer,
         				*new_state ) );
   /* Write to our output file descriptor */
-  swrite( outfd, diff.data(), diff.size() );
+  swrite( out_fd, diff.data(), diff.size() );
 
   repaint_requested = false;
 
@@ -252,7 +277,7 @@ bool TerminalBridge::process_user_input( int fd )
     for ( int i = 0; i < bytes_read; i++ ) {
       char the_byte = buf[ i ];
 
-//      overlays.get_prediction_engine().new_user_byte( the_byte, *local_framebuffer );
+      overlays.get_prediction_engine().new_user_byte( the_byte, *local_framebuffer );
 
       if ( quit_sequence_started ) {
 	if ( the_byte == '.' ) { /* Quit sequence is Ctrl-^ . */
@@ -265,7 +290,7 @@ bool TerminalBridge::process_user_input( int fd )
 	  }
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
 	  /* Restore terminal and terminal-driver state */
-//	  swrite( STDOUT_FILENO, display.close().c_str() );
+          swrite( out_fd, display.close().c_str() );
 
 	  // if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
 	  //   perror( "tcsetattr" );
@@ -279,7 +304,7 @@ bool TerminalBridge::process_user_input( int fd )
 	  // /* actually suspend */
 	  // kill( 0, SIGSTOP );
 
-	  // resume();
+	  resume();
 	} else if ( (the_byte == escape_pass_key) || (the_byte == escape_pass_key2) ) {
 	  /* Emulation sequence to type escape_key is escape_key +
 	     escape_pass_key (that is escape key without Ctrl) */
@@ -370,7 +395,7 @@ bool TerminalBridge::main( void )
 	    it++ ) {
 	sel.add_fd( *it );
       }
-      sel.add_fd( STDIN_FILENO );
+      sel.add_fd( in_fd );
 
       int active_fds = sel.select( wait_time );
       if ( active_fds < 0 ) {
@@ -399,17 +424,17 @@ bool TerminalBridge::main( void )
 	process_network_input();
       }
 
-      // if ( sel.read( STDIN_FILENO ) ) {
-      //   /* input from the user needs to be fed to the network */
-      //   if ( !process_user_input( STDIN_FILENO ) ) {
-      //     if ( !network->has_remote_addr() ) {
-      //       break;
-      //     } else if ( !network->shutdown_in_progress() ) {
-      //       overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
-      //       network->start_shutdown();
-      //     }
-      //   }
-      // }
+      if ( sel.read( in_fd ) ) {
+        /* input from the user needs to be fed to the network */
+        if ( !process_user_input( in_fd ) ) {
+          if ( !network->has_remote_addr() ) {
+            break;
+          } else if ( !network->shutdown_in_progress() ) {
+            overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
+            network->start_shutdown();
+          }
+        }
+      }
 
       // if ( sel.signal( SIGWINCH ) ) {
       //   /* resize */
@@ -433,7 +458,7 @@ bool TerminalBridge::main( void )
         }
       }
 
-      if ( sel.error( STDIN_FILENO ) ) {
+      if ( sel.error( in_fd) ) {
 	/* user problem */
 	if ( !network->has_remote_addr() ) {
 	  break;
