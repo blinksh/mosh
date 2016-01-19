@@ -67,7 +67,7 @@ extern "C" {
         }
 
         return result;
-    }
+    };
 }
 
 using namespace std;
