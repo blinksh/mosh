@@ -242,8 +242,7 @@ int main( int argc, char *argv[] )
 
   unsetenv( "MOSH_PREDICTION_DISPLAY" );
 
-  string userhost = argv[optind++];
-
+  //string userhost = argv[optind++];
   // Create ssh connection with those parameters
   struct sockaddr_in sin;
   int sock;
@@ -271,7 +270,7 @@ int main( int argc, char *argv[] )
   if (!session) {
     die("create session failed");
   }
-  
+
   // tell libssh2 we want it all done none non-blocking
   libssh2_session_set_blocking(session, 0);
   
@@ -283,25 +282,25 @@ int main( int argc, char *argv[] )
     die("Session handshake failed");
   }
 
-  const char *username = "carlos";
-  const char *password = "";
+  const char *username = "simple";
+  const char *password = "n0th1ng-more.";
 
   //ignore knownhosts, etc... although we should save them on a file
   //libssh2_knownhost_init(...) [..]
   
-  // while ((rc = libssh2_userauth_password(session, username, password)) ==
+  while ((rc = libssh2_userauth_password(session, username, password)) ==
 
-  // 	 LIBSSH2_ERROR_EAGAIN);
-  // if (rc) {
-  //   die("Wrong password");
-  // }
-  while ((rc = libssh2_userauth_publickey_fromfile(session, username,
-  						   "/home/carlos/.ssh/id_rsa.pub",
-  						   "/home/carlos/.ssh/id_rsa",
-  						   password)) == LIBSSH2_ERROR_EAGAIN);
+  	 LIBSSH2_ERROR_EAGAIN);
   if (rc) {
-    die("Authentication failed");
+    die("Wrong password");
   }
+  // while ((rc = libssh2_userauth_publickey_fromfile(session, username,
+  // 						   "/home/carlos/.ssh/id_rsa.pub",
+  // 						   "/home/carlos/.ssh/id_rsa",
+  // 						   password)) == LIBSSH2_ERROR_EAGAIN);
+  // if (rc) {
+  //   die("Authentication failed");
+  // }
   
   /* Exec non-blocking on the remote host */
   while( (channel = libssh2_channel_open_session(session)) == NULL &&
