@@ -39,6 +39,7 @@
 #include <iostream>
 
 #include "stmclient.h"
+#include "terminalbridge.h"
 #include "locale_utils.h"
 
 using namespace std;
@@ -422,8 +423,11 @@ int main( int argc, char *argv[] )
 
   bool success = false;
   try {
-    STMClient client( ip.c_str(), port.c_str(), 
-		      strdup(key.c_str()), predict.c_str() );
+    STMClient client(stdin, stdout, 
+			  ip.c_str(), port.c_str(), 
+			  strdup(key.c_str()), predict.c_str() );
+    // STMClient client( ip.c_str(), port.c_str(), 
+    // 		      strdup(key.c_str()), predict.c_str() );
     client.init();
 
     try {

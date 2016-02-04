@@ -26,49 +26,49 @@
 #include "networktransport.cc"
 
 
-extern "C" {
-    TerminalBridge* mosh_create(int infd,
-                                int outfd,
-                                const char *ip,
-                                const char* port,
-                                const char *key,
-                                const char* predict_mode) {
-        TerminalBridge *bridge = NULL;
-        *bridge = TerminalBridge(infd, outfd, ip, port, key, predict_mode);
-        return bridge;
-    }
+// extern "C" {
+//     TerminalBridge* mosh_create(int infd,
+//                                 int outfd,
+//                                 const char *ip,
+//                                 const char* port,
+//                                 const char *key,
+//                                 const char* predict_mode) {
+//         TerminalBridge *bridge = NULL;
+//         *bridge = TerminalBridge(infd, outfd, ip, port, key, predict_mode);
+//         return bridge;
+//     }
 
-    int mosh_main( TerminalBridge *bridge ) {
-        int result = 0;
+//     int mosh_main( TerminalBridge *bridge ) {
+//         int result = 0;
 
-        try {
-            bridge->init();
+//         try {
+//             bridge->init();
 
-            try {
-                result = bridge->main();
-            } catch ( ... ) {
-                bridge->shutdown();
-                throw;
-            }
+//             try {
+//                 result = bridge->main();
+//             } catch ( ... ) {
+//                 bridge->shutdown();
+//                 throw;
+//             }
 
-            bridge->shutdown();
+//             bridge->shutdown();
 
-        } catch ( const Network::NetworkException &e ) {
-            fprintf( stderr, "Network exception: %s\r\n",
-                     e.what() );
-            result = 1;
-        } catch ( const Crypto::CryptoException &e ) {
-            fprintf( stderr, "Crypto exception: %s\r\n",
-                     e.what() );
-            result = 2;
-        } catch ( const std::exception &e ) {
-            fprintf( stderr, "Error: %s\r\n", e.what() );
-            result = 3;
-        }
+//         } catch ( const Network::NetworkException &e ) {
+//             fprintf( stderr, "Network exception: %s\r\n",
+//                      e.what() );
+//             result = 1;
+//         } catch ( const Crypto::CryptoException &e ) {
+//             fprintf( stderr, "Crypto exception: %s\r\n",
+//                      e.what() );
+//             result = 2;
+//         } catch ( const std::exception &e ) {
+//             fprintf( stderr, "Error: %s\r\n", e.what() );
+//             result = 3;
+//         }
 
-        return result;
-    };
-}
+//         return result;
+//     };
+// }
 
 using namespace std;
 
@@ -199,6 +199,12 @@ void TerminalBridge::main_init( void )
   sel.add_signal( SIGPIPE );
   sel.add_signal( SIGCONT );
 
+  /* get initial window size */
+  if ( ioctl( fileno(in_fd), TIOCGWINSZ, &window_size ) < 0 ) {
+    perror( "ioctl TIOCGWINSZ" );
+    return;
+  }  
+
   /* local state */
   local_framebuffer = new Terminal::Framebuffer( window_size.ws_col, window_size.ws_row );
   new_state = new Terminal::Framebuffer( 1, 1 );
@@ -234,7 +240,7 @@ void TerminalBridge::output_new_frame( void ) {
         				*local_framebuffer,
         				*new_state ) );
   /* Write to our output file descriptor */
-  swrite( out_fd, diff.data(), diff.size() );
+  fwrite( diff.data(), diff.size(), 1, out_fd );
 
   repaint_requested = false;
 
@@ -290,7 +296,7 @@ bool TerminalBridge::process_user_input( int fd )
 	  }
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
 	  /* Restore terminal and terminal-driver state */
-          swrite( out_fd, display.close().c_str() );
+          swrite( fileno(out_fd), display.close().c_str() );
 
 	  // if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
 	  //   perror( "tcsetattr" );
@@ -395,7 +401,7 @@ bool TerminalBridge::main( void )
 	    it++ ) {
 	sel.add_fd( *it );
       }
-      sel.add_fd( in_fd );
+      sel.add_fd( fileno(in_fd) );
 
       int active_fds = sel.select( wait_time );
       if ( active_fds < 0 ) {
@@ -424,9 +430,9 @@ bool TerminalBridge::main( void )
 	process_network_input();
       }
 
-      if ( sel.read( in_fd ) ) {
+      if ( sel.read( fileno(in_fd) ) ) {
         /* input from the user needs to be fed to the network */
-        if ( !process_user_input( in_fd ) ) {
+        if ( !process_user_input( fileno(in_fd) ) ) {
           if ( !network->has_remote_addr() ) {
             break;
           } else if ( !network->shutdown_in_progress() ) {
@@ -458,7 +464,7 @@ bool TerminalBridge::main( void )
         }
       }
 
-      if ( sel.error( in_fd) ) {
+      if ( sel.error( fileno(in_fd)) ) {
 	/* user problem */
 	if ( !network->has_remote_addr() ) {
 	  break;

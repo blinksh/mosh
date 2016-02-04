@@ -65,13 +65,13 @@
 void STMClient::resume( void )
 {
   /* Restore termios state */
-  if ( tcsetattr( STDIN_FILENO, TCSANOW, &raw_termios ) < 0 ) {
+  if ( tcsetattr( fileno(in_fd), TCSANOW, &raw_termios ) < 0 ) {
       perror( "tcsetattr" );
       exit( 1 );
   }
 
   /* Put terminal in application-cursor-key mode */
-  swrite( STDOUT_FILENO, display.open().c_str() );
+  swrite( fileno(out_fd), display.open().c_str() );
 
   /* Flag that outer terminal state is unknown */
   repaint_requested = true;
@@ -90,7 +90,7 @@ void STMClient::init( void )
   }
 
   /* Verify terminal configuration */
-  if ( tcgetattr( STDIN_FILENO, &saved_termios ) < 0 ) {
+  if ( tcgetattr( fileno(in_fd), &saved_termios ) < 0 ) {
     perror( "tcgetattr" );
     exit( 1 );
   }
@@ -108,13 +108,13 @@ void STMClient::init( void )
 
   cfmakeraw( &raw_termios );
 
-  if ( tcsetattr( STDIN_FILENO, TCSANOW, &raw_termios ) < 0 ) {
+  if ( tcsetattr( fileno(in_fd), TCSANOW, &raw_termios ) < 0 ) {
       perror( "tcsetattr" );
       exit( 1 );
   }
 
   /* Put terminal in application-cursor-key mode */
-  swrite( STDOUT_FILENO, display.open().c_str() );
+  swrite( fileno(out_fd), display.open().c_str() );
 
   /* Add our name to window title */
   if ( !getenv( "MOSH_TITLE_NOPREFIX" ) ) {
@@ -202,9 +202,9 @@ void STMClient::shutdown( void )
   output_new_frame();
 
   /* Restore terminal and terminal-driver state */
-  swrite( STDOUT_FILENO, display.close().c_str() );
+  swrite( fileno(out_fd), display.close().c_str() );
   
-  if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
+  if ( tcsetattr( fileno(in_fd), TCSANOW, &saved_termios ) < 0 ) {
     perror( "tcsetattr" );
     exit( 1 );
   }
@@ -231,7 +231,7 @@ void STMClient::main_init( void )
   sel.add_signal( SIGCONT );
 
   /* get initial window size */
-  if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
+  if ( ioctl( fileno(in_fd), TIOCGWINSZ, &window_size ) < 0 ) {
     perror( "ioctl TIOCGWINSZ" );
     return;
   }  
@@ -242,7 +242,7 @@ void STMClient::main_init( void )
 
   /* initialize screen */
   string init = display.new_frame( false, *local_framebuffer, *local_framebuffer );
-  swrite( STDOUT_FILENO, init.data(), init.size() );
+  swrite( fileno(out_fd), init.data(), init.size() );
 
   /* open network */
   Network::UserStream blank;
@@ -275,7 +275,7 @@ void STMClient::output_new_frame( void )
   const string diff( display.new_frame( !repaint_requested,
 					*local_framebuffer,
 					*new_state ) );
-  swrite( STDOUT_FILENO, diff.data(), diff.size() );
+  swrite( fileno(out_fd), diff.data(), diff.size() );
 
   repaint_requested = false;
 
@@ -331,9 +331,9 @@ bool STMClient::process_user_input( int fd )
 	  }
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
 	  /* Restore terminal and terminal-driver state */
-	  swrite( STDOUT_FILENO, display.close().c_str() );
+	  swrite( fileno(out_fd), display.close().c_str() );
 
-	  if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
+	  if ( tcsetattr( fileno(in_fd), TCSANOW, &saved_termios ) < 0 ) {
 	    perror( "tcsetattr" );
 	    exit( 1 );
 	  }
@@ -388,7 +388,7 @@ bool STMClient::process_user_input( int fd )
 bool STMClient::process_resize( void )
 {
   /* get new size */
-  if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
+  if ( ioctl( fileno(in_fd), TIOCGWINSZ, &window_size ) < 0 ) {
     perror( "ioctl TIOCGWINSZ" );
     return false;
   }
@@ -436,7 +436,7 @@ bool STMClient::main( void )
 	    it++ ) {
 	sel.add_fd( *it );
       }
-      sel.add_fd( STDIN_FILENO );
+      sel.add_fd( fileno(in_fd) );
 
       int active_fds = sel.select( wait_time );
       if ( active_fds < 0 ) {
@@ -465,9 +465,9 @@ bool STMClient::main( void )
 	process_network_input();
       }
     
-      if ( sel.read( STDIN_FILENO ) ) {
+      if ( sel.read( fileno(in_fd) ) ) {
 	/* input from the user needs to be fed to the network */
-	if ( !process_user_input( STDIN_FILENO ) ) {
+	if ( !process_user_input( fileno(in_fd) ) ) {
 	  if ( !network->has_remote_addr() ) {
 	    break;
 	  } else if ( !network->shutdown_in_progress() ) {
@@ -499,7 +499,7 @@ bool STMClient::main( void )
         }
       }
 
-      if ( sel.error( STDIN_FILENO ) ) {
+      if ( sel.error( fileno(in_fd) ) ) {
 	/* user problem */
 	if ( !network->has_remote_addr() ) {
 	  break;

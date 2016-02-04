@@ -165,7 +165,7 @@ int main( int argc, char *argv[] )
 
   bool success = false;
   try {
-    STMClient client( ip, desired_port, key, predict_mode );
+    STMClient client( stdout, stdin, ip, desired_port, key, predict_mode );
     client.init();
 
     try {
