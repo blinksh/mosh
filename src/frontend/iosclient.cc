@@ -50,7 +50,7 @@
 #include <util.h>
 #endif
 
-#include "stmclient.h"
+#include "iosclient.h"
 #include "swrite.h"
 #include "completeterminal.h"
 #include "user.h"
@@ -62,7 +62,7 @@
 
 #include "networktransport.cc"
 
-void STMClient::resume( void )
+void iOSClient::resume( void )
 {
   /* Restore termios state */
   if ( tcsetattr( in_fd, TCSANOW, &raw_termios ) < 0 ) {
@@ -77,7 +77,7 @@ void STMClient::resume( void )
   repaint_requested = true;
 }
 
-void STMClient::init( void )
+void iOSClient::init( void )
 {
   if ( !is_utf8_locale() ) {
     LocaleVar native_ctype = get_ctype();
@@ -193,7 +193,7 @@ void STMClient::init( void )
   connecting_notification = wstring( tmp );
 }
 
-void STMClient::shutdown( void )
+void iOSClient::shutdown( void )
 {
   /* Restore screen state */
   overlays.get_notification_engine().set_notification_string( wstring( L"" ) );
@@ -220,7 +220,7 @@ void STMClient::shutdown( void )
   }
 }
 
-void STMClient::main_init( void )
+void iOSClient::main_init( void )
 {
   Select &sel = Select::get_instance();
   sel.add_signal( SIGWINCH );
@@ -256,7 +256,7 @@ void STMClient::main_init( void )
   network->get_current_state().push_back( Parser::Resize( window_size.ws_col, window_size.ws_row ) );
 }
 
-void STMClient::output_new_frame( void )
+void iOSClient::output_new_frame( void )
 {
   if ( !network ) { /* clean shutdown even when not initialized */
     return;
@@ -285,7 +285,7 @@ void STMClient::output_new_frame( void )
   local_framebuffer = tmp;
 }
 
-void STMClient::process_network_input( void )
+void iOSClient::process_network_input( void )
 {
   network->recv();
   
@@ -298,7 +298,7 @@ void STMClient::process_network_input( void )
   overlays.get_prediction_engine().set_local_frame_late_acked( network->get_latest_remote_state().state.get_echo_ack() );
 }
 
-bool STMClient::process_user_input( int fd )
+bool iOSClient::process_user_input( int fd )
 {
   const int buf_size = 16384;
   char buf[ buf_size ];
@@ -385,7 +385,7 @@ bool STMClient::process_user_input( int fd )
   return true;
 }
 
-bool STMClient::process_resize( void )
+bool iOSClient::process_resize( void )
 {
   /* get new size */
   if ( ioctl( in_fd, TIOCGWINSZ, &window_size ) < 0 ) {
@@ -408,7 +408,7 @@ bool STMClient::process_resize( void )
   return true;
 }
 
-bool STMClient::main( void )
+bool iOSClient::main( void )
 {
   /* initialize signal handling and structures */
   main_init();

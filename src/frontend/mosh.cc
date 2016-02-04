@@ -38,7 +38,7 @@
 #include <sstream>
 #include <iostream>
 
-#include "stmclient.h"
+#include "iosclient.h"
 #include "terminalbridge.h"
 #include "locale_utils.h"
 
@@ -423,7 +423,7 @@ int main( int argc, char *argv[] )
 
   bool success = false;
   try {
-    STMClient client(stdin, stdout, 
+    iOSClient client(fileno(stdin), fileno(stdout), 
 			  ip.c_str(), port.c_str(), 
 			  strdup(key.c_str()), predict.c_str() );
     // STMClient client( ip.c_str(), port.c_str(), 

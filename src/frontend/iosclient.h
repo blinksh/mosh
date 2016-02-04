@@ -30,8 +30,8 @@
     also delete it here.
 */
 
-#ifndef STM_CLIENT_HPP
-#define STM_CLIENT_HPP
+#ifndef IOS_CLIENT_HPP
+#define IOS_CLIENT_HPP
 
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -42,7 +42,7 @@
 #include "user.h"
 #include "terminaloverlay.h"
 
-class STMClient {
+class iOSClient {
 private:
   int in_fd;
   int out_fd;
@@ -86,7 +86,7 @@ private:
   void resume( void ); /* restore state after SIGCONT */
 
 public:
- STMClient( int s_in_fd, int s_out_fd, 
+ iOSClient( int s_in_fd, int s_out_fd, 
 	    const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
    : in_fd( s_in_fd ), out_fd( s_out_fd ), 
     ip( s_ip ), port( s_port ), key( s_key ),
@@ -125,7 +125,7 @@ public:
   void shutdown( void );
   bool main( void );
 
-  ~STMClient()
+  ~iOSClient()
   {
     if ( local_framebuffer != NULL ) {
       delete local_framebuffer;
@@ -141,8 +141,8 @@ public:
   }
 
   /* unused */
-  STMClient( const STMClient & );
-  STMClient & operator=( const STMClient & );
+  iOSClient( const iOSClient & );
+  iOSClient & operator=( const iOSClient & );
 };
 
 #endif
