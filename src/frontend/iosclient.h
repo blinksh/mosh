@@ -45,7 +45,7 @@
 class iOSClient {
 private:
   int in_fd;
-  int out_fd;
+  FILE * out_fd;
 
   std::string ip;
   std::string port;
@@ -86,7 +86,7 @@ private:
   void resume( void ); /* restore state after SIGCONT */
 
 public:
- iOSClient( int s_in_fd, int s_out_fd, 
+ iOSClient( int s_in_fd, FILE * s_out_fd, 
 	    const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
    : in_fd( s_in_fd ), out_fd( s_out_fd ), 
     ip( s_ip ), port( s_port ), key( s_key ),
@@ -98,7 +98,7 @@ public:
       new_state( NULL ),
       overlays(),
       network( NULL ),
-      display( true ), /* use TERM environment var to initialize display */
+      display( false ), /* use TERM environment var to initialize display */
       connecting_notification(),
       repaint_requested( false ),
       lf_entered( false ),

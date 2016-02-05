@@ -63,7 +63,7 @@
 
 using namespace Terminal;
 
-#if !defined IOS_CONTROLLER
+//#if !defined IOS_CONTROLLER
 bool Display::ti_flag( const char *capname )
 {
   int val = tigetflag( const_cast<char *>( capname ) );
@@ -155,4 +155,4 @@ Display::Display( bool use_environment )
     }
   }
 }
-#endif
+//#endif

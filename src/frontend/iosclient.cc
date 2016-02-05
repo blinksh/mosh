@@ -65,61 +65,62 @@
 void iOSClient::resume( void )
 {
   /* Restore termios state */
-  if ( tcsetattr( in_fd, TCSANOW, &raw_termios ) < 0 ) {
-      perror( "tcsetattr" );
-      exit( 1 );
-  }
+  // if ( tcsetattr( in_fd, TCSANOW, &raw_termios ) < 0 ) {
+  //     perror( "tcsetattr" );
+  //     exit( 1 );
+  // }
 
-  /* Put terminal in application-cursor-key mode */
-  swrite( out_fd, display.open().c_str() );
+  // /* Put terminal in application-cursor-key mode */
+  // swrite( out_fd, display.open().c_str() );
 
-  /* Flag that outer terminal state is unknown */
-  repaint_requested = true;
+  // /* Flag that outer terminal state is unknown */
+  // repaint_requested = true;
 }
 
 void iOSClient::init( void )
 {
-  if ( !is_utf8_locale() ) {
-    LocaleVar native_ctype = get_ctype();
-    string native_charset( locale_charset() );
+//   if ( !is_utf8_locale() ) {
+//     LocaleVar native_ctype = get_ctype();
+//     string native_charset( locale_charset() );
 
-    fprintf( stderr, "mosh-client needs a UTF-8 native locale to run.\n\n" );
-    fprintf( stderr, "Unfortunately, the client's environment (%s) specifies\nthe character set \"%s\".\n\n", native_ctype.str().c_str(), native_charset.c_str() );
-    int unused __attribute((unused)) = system( "locale" );
-    exit( 1 );
-  }
+//     fprintf( stderr, "mosh-client needs a UTF-8 native locale to run.\n\n" );
+//     fprintf( stderr, "Unfortunately, the client's environment (%s) specifies\nthe character set \"%s\".\n\n", native_ctype.str().c_str(), native_charset.c_str() );
+//     int unused __attribute((unused)) = system( "locale" );
+//     exit( 1 );
+//   }
 
-  /* Verify terminal configuration */
-  if ( tcgetattr( in_fd, &saved_termios ) < 0 ) {
-    perror( "tcgetattr" );
-    exit( 1 );
-  }
+//   /* Verify terminal configuration */
+//   if ( tcgetattr( in_fd, &saved_termios ) < 0 ) {
+//     perror( "tcgetattr" );
+//     exit( 1 );
+//   }
 
-  /* Put terminal driver in raw mode */
-  raw_termios = saved_termios;
+//   /* Put terminal driver in raw mode */
+//   raw_termios = saved_termios;
 
-#ifdef HAVE_IUTF8
-  if ( !(raw_termios.c_iflag & IUTF8) ) {
-    //    fprintf( stderr, "Warning: Locale is UTF-8 but termios IUTF8 flag not set. Setting IUTF8 flag.\n" );
-    /* Probably not really necessary since we are putting terminal driver into raw mode anyway. */
-    raw_termios.c_iflag |= IUTF8;
-  }
-#endif /* HAVE_IUTF8 */
+// #ifdef HAVE_IUTF8
+//   if ( !(raw_termios.c_iflag & IUTF8) ) {
+//     //    fprintf( stderr, "Warning: Locale is UTF-8 but termios IUTF8 flag not set. Setting IUTF8 flag.\n" );
+//     /* Probably not really necessary since we are putting terminal driver into raw mode anyway. */
+//     raw_termios.c_iflag |= IUTF8;
+//   }
+// #endif /* HAVE_IUTF8 */
 
-  cfmakeraw( &raw_termios );
+//   cfmakeraw( &raw_termios );
 
-  if ( tcsetattr( in_fd, TCSANOW, &raw_termios ) < 0 ) {
-      perror( "tcsetattr" );
-      exit( 1 );
-  }
+//   if ( tcsetattr( in_fd, TCSANOW, &raw_termios ) < 0 ) {
+//       perror( "tcsetattr" );
+//       exit( 1 );
+//   }
 
-  /* Put terminal in application-cursor-key mode */
-  swrite( out_fd, display.open().c_str() );
+//   /* Put terminal in application-cursor-key mode */
+//   swrite( out_fd, display.open().c_str() );
 
-  /* Add our name to window title */
-  if ( !getenv( "MOSH_TITLE_NOPREFIX" ) ) {
-    overlays.set_title_prefix( wstring( L"[mosh] " ) );
-  }
+  // TODO: Send signal to set window Title
+  // /* Add our name to window title */
+  // if ( !getenv( "MOSH_TITLE_NOPREFIX" ) ) {
+  //   overlays.set_title_prefix( wstring( L"[mosh] " ) );
+  // }
 
   /* Set terminal escape key. */
   const char *escape_key_env;
@@ -202,12 +203,12 @@ void iOSClient::shutdown( void )
   output_new_frame();
 
   /* Restore terminal and terminal-driver state */
-  swrite( out_fd, display.close().c_str() );
+  //swrite( out_fd, display.close().c_str() );
   
-  if ( tcsetattr( in_fd, TCSANOW, &saved_termios ) < 0 ) {
-    perror( "tcsetattr" );
-    exit( 1 );
-  }
+  // if ( tcsetattr( in_fd, TCSANOW, &saved_termios ) < 0 ) {
+  //   perror( "tcsetattr" );
+  //   exit( 1 );
+  // }
 
   if ( still_connecting() ) {
     fprintf( stderr, "\nmosh did not make a successful connection to %s:%s.\n", ip.c_str(), port.c_str() );
@@ -230,11 +231,16 @@ void iOSClient::main_init( void )
   sel.add_signal( SIGPIPE );
   sel.add_signal( SIGCONT );
 
+  // TODO: Sending signals somehow to obtain the window size.
+  // http://www.delorie.com/djgpp/doc/libc/libc_495.html maybe File Extensions?
   /* get initial window size */
-  if ( ioctl( in_fd, TIOCGWINSZ, &window_size ) < 0 ) {
-    perror( "ioctl TIOCGWINSZ" );
-    return;
-  }  
+  window_size.ws_row = 60;
+  window_size.ws_col = 80;
+  // if ( ioctl( in_fd, TIOCGWINSZ, &window_size ) < 0 ) {
+  //   perror( "ioctl TIOCGWINSZ" );
+  //   return;
+  // }
+  
 
   /* local state */
   local_framebuffer = new Terminal::Framebuffer( window_size.ws_col, window_size.ws_row );
@@ -242,7 +248,8 @@ void iOSClient::main_init( void )
 
   /* initialize screen */
   string init = display.new_frame( false, *local_framebuffer, *local_framebuffer );
-  swrite( out_fd, init.data(), init.size() );
+  fwrite( init.data(), init.size(), 1, out_fd );
+  //swrite( out_fd, init.data(), init.size() );
 
   /* open network */
   Network::UserStream blank;
@@ -275,7 +282,8 @@ void iOSClient::output_new_frame( void )
   const string diff( display.new_frame( !repaint_requested,
 					*local_framebuffer,
 					*new_state ) );
-  swrite( out_fd, diff.data(), diff.size() );
+  fwrite( diff.data(), diff.size(), 1, out_fd);
+  //swrite( out_fd, diff.data(), diff.size() );
 
   repaint_requested = false;
 
@@ -331,21 +339,21 @@ bool iOSClient::process_user_input( int fd )
 	  }
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
 	  /* Restore terminal and terminal-driver state */
-	  swrite( out_fd, display.close().c_str() );
+	  // swrite( out_fd, display.close().c_str() );
 
-	  if ( tcsetattr( in_fd, TCSANOW, &saved_termios ) < 0 ) {
-	    perror( "tcsetattr" );
-	    exit( 1 );
-	  }
+	  // if ( tcsetattr( in_fd, TCSANOW, &saved_termios ) < 0 ) {
+	  //   perror( "tcsetattr" );
+	  //   exit( 1 );
+	  // }
 
-	  printf( "\n\033[37;44m[mosh is suspended.]\033[m\n" );
+	  // printf( "\n\033[37;44m[mosh is suspended.]\033[m\n" );
 
-	  fflush( NULL );
+	  // fflush( NULL );
 
-	  /* actually suspend */
-	  kill( 0, SIGSTOP );
+	  // /* actually suspend */
+	  // kill( 0, SIGSTOP );
 
-	  resume();
+	  // resume();
 	} else if ( (the_byte == escape_pass_key) || (the_byte == escape_pass_key2) ) {
 	  /* Emulation sequence to type escape_key is escape_key +
 	     escape_pass_key (that is escape key without Ctrl) */
@@ -388,22 +396,22 @@ bool iOSClient::process_user_input( int fd )
 bool iOSClient::process_resize( void )
 {
   /* get new size */
-  if ( ioctl( in_fd, TIOCGWINSZ, &window_size ) < 0 ) {
-    perror( "ioctl TIOCGWINSZ" );
-    return false;
-  }
+  // if ( ioctl( in_fd, TIOCGWINSZ, &window_size ) < 0 ) {
+  //   perror( "ioctl TIOCGWINSZ" );
+  //   return false;
+  // }
   
-  /* tell remote emulator */
-  Parser::Resize res( window_size.ws_col, window_size.ws_row );
+  // /* tell remote emulator */
+  // Parser::Resize res( window_size.ws_col, window_size.ws_row );
   
-  if ( !network->shutdown_in_progress() ) {
-    network->get_current_state().push_back( res );
-  }
+  // if ( !network->shutdown_in_progress() ) {
+  //   network->get_current_state().push_back( res );
+  // }
 
-  /* note remote emulator will probably reply with its own Resize to adjust our state */
+  // /* note remote emulator will probably reply with its own Resize to adjust our state */
   
-  /* tell prediction engine */
-  overlays.get_prediction_engine().reset();
+  // /* tell prediction engine */
+  // overlays.get_prediction_engine().reset();
 
   return true;
 }

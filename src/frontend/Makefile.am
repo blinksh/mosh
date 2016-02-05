@@ -20,6 +20,8 @@ if BUILD_IOS_CONTROLLER
   noinst_LIBRARIES = libmoshios.a
 endif
 
+#libmoshios_a_LIBADD = ../crypto/libmoshcrypto.a ../network/libmoshnetwork.a ../statesync/libmoshstatesync.a ../terminal/libmoshterminal.a ../util/libmoshutil.a ../protobufs/libmoshprotos.a $(TINFO_LIBS) $(protobuf_LIBS) $(CRYPTO_LIBS)
+
 mosh_client_SOURCES = mosh-client.cc stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
 mosh_server_SOURCES = mosh-server.cc
 mosh_SOURCES = mosh.cc iosclient.cc iosclient.h terminaloverlay.cc terminaloverlay.h
