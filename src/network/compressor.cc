@@ -31,9 +31,11 @@
 */
 
 #include <zlib.h>
+#include <pthread.h>
 
 #include "compressor.h"
 #include "dos_assert.h"
+
 
 using namespace Network;
 using namespace std;
@@ -56,9 +58,32 @@ string Compressor::uncompress_str( const string &input )
   return string( reinterpret_cast<char *>( buffer ), len );
 }
 
+static pthread_key_t key;
+static pthread_once_t key_once = PTHREAD_ONCE_INIT;
+
+static void destroy_key(void *arg)
+{
+  Compressor *cmprsr = (Compressor *) arg;
+  delete cmprsr;
+}
+
+static void make_key() 
+{
+  (void) pthread_key_create(&key, destroy_key);
+}
+
 /* construct on first use */
 Compressor & Network::get_compressor( void )
 {
-  static Compressor the_compressor;
-  return the_compressor;
+  //  static Compressor the_compressor;
+  Compressor *the_compressor;
+
+  pthread_once(&key_once, make_key);
+  if ((the_compressor = (Compressor *)pthread_getspecific(key)) == NULL) 
+  {
+    the_compressor = new Compressor();
+    pthread_setspecific(key, the_compressor);
+  }
+
+  return *the_compressor;
 }

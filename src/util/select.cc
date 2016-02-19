@@ -30,6 +30,8 @@
     also delete it here.
 */
 
+#include <pthread.h>
+
 #include "select.h"
 
 fd_set Select::dummy_fd_set;
@@ -43,4 +45,33 @@ void Select::handle_signal( int signum )
 
   Select &sel = get_instance();
   sel.got_signal[ signum ] = 1;
+}
+
+static pthread_key_t key;
+static pthread_once_t key_once = PTHREAD_ONCE_INIT;
+
+static void destroy_key(void *arg)
+{
+  Select *selector = (Select *) arg;
+  delete selector;
+}
+
+static void make_key() 
+{
+  (void) pthread_key_create(&key, destroy_key);
+}
+
+Select &Select::get_instance( void ) {
+  /* COFU may or may not be thread-safe, depending on compiler */
+  //static Select instance;
+  Select *instance;
+
+  pthread_once(&key_once, make_key);
+  if ((instance = (Select *)pthread_getspecific(key)) == NULL)
+  {
+    instance = new Select();
+    pthread_setspecific(key, instance);
+  }
+
+  return *instance;
 }

@@ -49,11 +49,7 @@
 
 class Select {
 public:
-  static Select &get_instance( void ) {
-    /* COFU may or may not be thread-safe, depending on compiler */
-    static Select instance;
-    return instance;
-  }
+  static Select &get_instance( void );
 
 private:
   Select()
