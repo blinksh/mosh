@@ -231,36 +231,24 @@ void iOSClient::main_init( void )
   sel.add_signal( SIGPIPE );
   sel.add_signal( SIGCONT );
 
-  // TODO: Sending signals somehow to obtain the window size.
-  // http://www.delorie.com/djgpp/doc/libc/libc_495.html maybe File Extensions?
-  /* get initial window size */
-  window_size.ws_row = 60;
-  window_size.ws_col = 80;
-  // if ( ioctl( in_fd, TIOCGWINSZ, &window_size ) < 0 ) {
-  //   perror( "ioctl TIOCGWINSZ" );
-  //   return;
-  // }
-  
-
   /* local state */
-  local_framebuffer = new Terminal::Framebuffer( window_size.ws_col, window_size.ws_row );
+  local_framebuffer = new Terminal::Framebuffer( window_size->ws_col, window_size->ws_row );
   new_state = new Terminal::Framebuffer( 1, 1 );
 
   /* initialize screen */
   string init = display.new_frame( false, *local_framebuffer, *local_framebuffer );
   fwrite( init.data(), init.size(), 1, out_fd );
-  //swrite( out_fd, init.data(), init.size() );
 
   /* open network */
   Network::UserStream blank;
-  Terminal::Complete local_terminal( window_size.ws_col, window_size.ws_row );
+  Terminal::Complete local_terminal( window_size->ws_col, window_size->ws_row );
   network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal,
 									       key.c_str(), ip.c_str(), port.c_str() );
 
   network->set_send_delay( 1 ); /* minimal delay on outgoing keystrokes */
 
   /* tell server the size of the terminal */
-  network->get_current_state().push_back( Parser::Resize( window_size.ws_col, window_size.ws_row ) );
+  network->get_current_state().push_back( Parser::Resize( window_size->ws_col, window_size->ws_row ) );
 }
 
 void iOSClient::output_new_frame( void )
@@ -402,16 +390,16 @@ bool iOSClient::process_resize( void )
   // }
   
   // /* tell remote emulator */
-  // Parser::Resize res( window_size.ws_col, window_size.ws_row );
+  Parser::Resize res( window_size->ws_col, window_size->ws_row );
   
-  // if ( !network->shutdown_in_progress() ) {
-  //   network->get_current_state().push_back( res );
-  // }
+  if ( !network->shutdown_in_progress() ) {
+    network->get_current_state().push_back( res );
+  }
 
-  // /* note remote emulator will probably reply with its own Resize to adjust our state */
+  /* note remote emulator will probably reply with its own Resize to adjust our state */
   
-  // /* tell prediction engine */
-  // overlays.get_prediction_engine().reset();
+  /* tell prediction engine */
+  overlays.get_prediction_engine().reset();
 
   return true;
 }

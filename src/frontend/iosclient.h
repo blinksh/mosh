@@ -59,7 +59,7 @@ private:
 
   struct termios saved_termios, raw_termios;
 
-  struct winsize window_size;
+  struct winsize *window_size;
 
   Terminal::Framebuffer *local_framebuffer, *new_state;
   Overlay::OverlayManager overlays;
@@ -86,14 +86,14 @@ private:
   void resume( void ); /* restore state after SIGCONT */
 
 public:
- iOSClient( int s_in_fd, FILE * s_out_fd, 
+ iOSClient( int s_in_fd, FILE * s_out_fd, struct winsize *s_window_size,
 	    const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode )
    : in_fd( s_in_fd ), out_fd( s_out_fd ), 
     ip( s_ip ), port( s_port ), key( s_key ),
     escape_key( 0x1E ), escape_pass_key( '^' ), escape_pass_key2( '^' ),
     escape_requires_lf( false ), escape_key_help( L"?" ),
       saved_termios(), raw_termios(),
-      window_size(),
+      window_size( s_window_size ),
       local_framebuffer( NULL ),
       new_state( NULL ),
       overlays(),

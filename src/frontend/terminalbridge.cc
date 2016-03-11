@@ -1,13 +1,13 @@
 #include "iosclient.h"
 
 extern "C"
-int mosh_main(FILE *f_in, FILE *f_out,
+int mosh_main(FILE *f_in, FILE *f_out, struct winsize *window_size,
 	      const char *ip, const char *port, const char *key, const char *predict_mode)
 {
   fwrite("Hello from the Bridge!\n", 22, 1, f_out);
   bool success = false;
   try {
-    iOSClient client(fileno(f_in), f_out, 
+    iOSClient client(fileno(f_in), f_out, window_size,
 		     ip, port, key, predict_mode);
     // STMClient client( ip.c_str(), port.c_str(), 
     // 		      strdup(key.c_str()), predict.c_str() );
