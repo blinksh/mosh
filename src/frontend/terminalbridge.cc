@@ -1,10 +1,14 @@
 #include "iosclient.h"
+#include "locale_utils.h"
 
 extern "C"
 int mosh_main(FILE *f_in, FILE *f_out, struct winsize *window_size,
 	      const char *ip, const char *port, const char *key, const char *predict_mode)
 {
   fwrite("Hello from the Bridge!\n", 22, 1, f_out);
+  /* Adopt native locale */
+  set_native_locale();
+
   bool success = false;
   try {
     iOSClient client(fileno(f_in), f_out, window_size,
