@@ -95,7 +95,7 @@ bool is_utf8_locale( void ) {
 
 void set_native_locale( void ) {
   /* Adopt native locale */
-  if ( NULL == setlocale( LC_ALL, "en_US.UTF-8" ) ) {
+  if ( NULL == setlocale( LC_CTYPE, "UTF-8" ) ) {
     int saved_errno = errno;
     if ( saved_errno == ENOENT ) {
       LocaleVar ctype( get_ctype() );
