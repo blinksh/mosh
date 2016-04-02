@@ -45,7 +45,7 @@
  #include <stdio.h>
 #endif
 
-static uint64_t millis_cache = -1;
+static __thread uint64_t millis_cache = -1;
 
 uint64_t frozen_timestamp( void )
 {
