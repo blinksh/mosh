@@ -83,8 +83,8 @@ void iOSClient::init( void )
     LocaleVar native_ctype = get_ctype();
     string native_charset( locale_charset() );
 
-    fprintf( stderr, "mosh-client needs a UTF-8 native locale to run.\n\n" );
-    fprintf( stderr, "Unfortunately, the client's environment (%s) specifies\nthe character set \"%s\".\n\n", native_ctype.str().c_str(), native_charset.c_str() );
+    fprintf( out_fd, "mosh-client needs a UTF-8 native locale to run.\r\n" );
+    fprintf( out_fd, "Unfortunately, the client's environment (%s) specifies\nthe character set \"%s\".\r\n", native_ctype.str().c_str(), native_charset.c_str() );
     int unused __attribute((unused)) = system( "locale" );
     exit( 1 );
   }
@@ -211,12 +211,12 @@ void iOSClient::shutdown( void )
   // }
 
   if ( still_connecting() ) {
-    fprintf( stderr, "\nmosh did not make a successful connection to %s:%s.\n", ip.c_str(), port.c_str() );
-    fprintf( stderr, "Please verify that UDP port %s is not firewalled and can reach the server.\n\n", port.c_str() );
-    fprintf( stderr, "(By default, mosh uses a UDP port between 60000 and 61000. The -p option\nselects a specific UDP port number.)\n" );
+    fprintf( out_fd, "\nmosh did not make a successful connection to %s:%s.\r\n", ip.c_str(), port.c_str() );
+    fprintf( out_fd, "Please verify that UDP port %s is not firewalled and can reach the server.\r\n\n", port.c_str() );
+    fprintf( out_fd, "(By default, mosh uses a UDP port between 60000 and 61000. The -p option\nselects a specific UDP port number.)\r\n" );
   } else if ( network ) {
     if ( !clean_shutdown ) {
-      fprintf( stderr, "\n\nmosh did not shut down cleanly. Please note that the\nmosh-server process may still be running on the server.\n" );
+      fprintf( out_fd, "\r\n\nmosh did not shut down cleanly. Please note that the\r\nmosh-server process may still be running on the server.\r\n" );
     }
   }
 }
