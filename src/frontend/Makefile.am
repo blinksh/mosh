@@ -4,12 +4,12 @@ AM_LDFLAGS  = $(HARDEN_LDFLAGS)
 LDADD = ../crypto/libmoshcrypto.a ../network/libmoshnetwork.a ../statesync/libmoshstatesync.a ../terminal/libmoshterminal.a ../util/libmoshutil.a ../protobufs/libmoshprotos.a -lm $(TINFO_LIBS) $(protobuf_LIBS) $(CRYPTO_LIBS)
 
 mosh_server_LDADD = $(LDADD) $(LIBUTIL)
-mosh_LDADD = $(LDADD) $(LIBUTIL) /usr/lib64/libssh2.so
+mosh_client_LDADD = $(LDADD) $(LIBUTIL)
 
 bin_PROGRAMS =
 
 if BUILD_CLIENT
-  bin_PROGRAMS += mosh-client mosh
+  bin_PROGRAMS += mosh-client
 endif
 
 if BUILD_SERVER
@@ -17,12 +17,11 @@ if BUILD_SERVER
 endif
 
 if BUILD_IOS_CONTROLLER
-  noinst_LIBRARIES = libmoshios.a
+  noinst_LIBRARIES = libmoshiosclient.a
 endif
 
-#libmoshios_a_LIBADD = ../crypto/libmoshcrypto.a ../network/libmoshnetwork.a ../statesync/libmoshstatesync.a ../terminal/libmoshterminal.a ../util/libmoshutil.a ../protobufs/libmoshprotos.a $(TINFO_LIBS) $(protobuf_LIBS) $(CRYPTO_LIBS)
 
 mosh_client_SOURCES = mosh-client.cc stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
 mosh_server_SOURCES = mosh-server.cc
-mosh_SOURCES = mosh.cc iosclient.cc iosclient.h terminaloverlay.cc terminaloverlay.h
-libmoshios_a_SOURCES = terminalbridge.cc iosclient.cc iosclient.h terminaloverlay.cc terminaloverlay.h
+
+libmoshiosclient_a_SOURCES = moshiosbridge.cc moshiosbridge.h iosclient.cc iosclient.h terminaloverlay.cc terminaloverlay.h

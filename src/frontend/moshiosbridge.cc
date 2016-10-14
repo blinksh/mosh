@@ -1,3 +1,4 @@
+#include "moshiosbridge.h"
 #include "iosclient.h"
 #include "locale_utils.h"
 
