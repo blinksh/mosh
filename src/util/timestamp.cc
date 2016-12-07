@@ -34,6 +34,7 @@
 
 #include "timestamp.h"
 
+#include <pthread.h>
 #include <errno.h>
 
 #if HAVE_CLOCK_GETTIME
@@ -45,19 +46,53 @@
  #include <stdio.h>
 #endif
 
-static __thread uint64_t millis_cache = -1;
+//static __thread uint64_t millis_cache = -1;
+
+static pthread_key_t key;
+static pthread_once_t key_once = PTHREAD_ONCE_INIT;
+
+static void destroy_key(void *arg)
+{
+  uint64_t *timestamp = (uint64_t *) arg;
+  delete timestamp;
+}
+
+static void make_key()
+{
+  (void) pthread_key_create(&key, destroy_key);
+}
+
+uint64_t *get_timestamp( void ) {
+  uint64_t *instance;
+
+  pthread_once(&key_once, make_key);
+  if ((instance = (uint64_t *)pthread_getspecific(key)) == NULL)
+  {
+    instance = new uint64_t[1];
+    instance[0] = -1;
+    pthread_setspecific(key, instance);
+  }
+
+  return instance;
+}
 
 uint64_t frozen_timestamp( void )
 {
-  if ( millis_cache == uint64_t( -1 ) ) {
+  uint64_t *timestamp = get_timestamp();
+
+  //  uint64_t millis_cache = timestamp[0];
+
+  if ( timestamp[0] == uint64_t( -1 ) ) {
     freeze_timestamp();
   }
 
-  return millis_cache;
+  return timestamp[0];
 }
 
 void freeze_timestamp( void )
 {
+  uint64_t *timestamp = get_timestamp();
+
 #if HAVE_CLOCK_GETTIME
   struct timespec tp;
 
@@ -67,7 +102,7 @@ void freeze_timestamp( void )
     uint64_t millis = tp.tv_nsec / 1000000;
     millis += uint64_t( tp.tv_sec ) * 1000;
 
-    millis_cache = millis;
+    timestamp[0] = millis;
     return;
   }
 #elif HAVE_MACH_ABSOLUTE_TIME
@@ -81,8 +116,8 @@ void freeze_timestamp( void )
 
   // NB: mach_absolute_time() returns "absolute time units"
   // We need to apply a conversion to get milliseconds.
-  millis_cache = mach_absolute_time() * absolute_to_millis;
-  return;								    
+  timestamp[0] = mach_absolute_time() * absolute_to_millis;
+  return;
 #elif HAVE_GETTIMEOFDAY
   // NOTE: If time steps backwards, timeouts may be confused.
   struct timeval tv;
@@ -92,7 +127,7 @@ void freeze_timestamp( void )
     uint64_t millis = tv.tv_usec / 1000;
     millis += uint64_t( tv.tv_sec ) * 1000;
 
-    millis_cache = millis;
+    timestamp[0] = millis;
     return;
   }
 #else
