@@ -49,11 +49,14 @@
 
 class Select {
 public:
-  static Select &get_instance( void ) {
-    /* COFU may or may not be thread-safe, depending on compiler */
-    static Select instance;
-    return instance;
-  }
+  static Select &get_instance( void );
+  //static Select &get_instance( void ) {
+    //[> COFU may or may not be thread-safe, depending on compiler <]
+    //if (instance == NULL) {
+      //instance = new Select();
+    //}
+    //return *instance;
+  //}
 
 private:
   Select()
@@ -235,10 +238,10 @@ private:
 
   sigset_t empty_sigset;
 
-  static fd_set dummy_fd_set;
-  static sigset_t dummy_sigset;
+  static __thread fd_set dummy_fd_set;
+  static __thread sigset_t dummy_sigset;
   int consecutive_polls;
-  static unsigned int verbose;
+  static __thread unsigned int verbose;
 };
 
 #endif

@@ -147,6 +147,13 @@ AC_ARG_ENABLE([server],
   [build_server="yes"])
 AM_CONDITIONAL([BUILD_SERVER], [test x"$build_server" != xno])
 
+AC_ARG_ENABLE([ios-controller],
+  [AS_HELP_STRING([--enable-ios-controller], [Build the mosh iOS controller library @<:@no@:>@])],
+  [build_ios_controller="$enableval"],
+  [build_ios_controller="no"])
+AM_CONDITIONAL([BUILD_IOS_CONTROLLER], [test x"$build_ios_controller" != xno])
+AS_IF([test x"$build_ios_controller" != xno], [AC_DEFINE([IOS_CONTROLLER], [1], [Define if compiling iOS controller])])
+
 AC_ARG_ENABLE([examples],
   [AS_HELP_STRING([--enable-examples], [Build the miscellaneous programs in src/examples @<:@no@:>@])],
   [build_examples="$enableval"],
@@ -408,13 +415,16 @@ public:
 AC_LANG_POP(C++)
 
 AC_MSG_CHECKING([whether clock_gettime() is supported])
-AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <time.h>
-struct timespec ts;
-]], [[return clock_gettime(CLOCK_MONOTONIC, &ts);]])],
-  [AC_DEFINE([HAVE_CLOCK_GETTIME], [1],
-     [Define if clock_gettime() is available.])
-   AC_MSG_RESULT([yes])],
-  [AC_MSG_RESULT([no])])
+AS_IF([test x"$build_ios_controller" != xno], 
+  [AC_DEFINE([HAVE_CLOCK_GETTIME], [0]) AC_MSG_RESULT([no])],
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <time.h>
+    struct timespec ts;
+  ]], [[return clock_gettime(CLOCK_MONOTONIC, &ts);]])],
+    [AC_DEFINE([HAVE_CLOCK_GETTIME], [1],
+       [Define if clock_gettime() is available.])
+     AC_MSG_RESULT([yes])],
+    [AC_MSG_RESULT([no])])
+)
 
 AC_CHECK_DECL([mach_absolute_time],
   [AC_DEFINE([HAVE_MACH_ABSOLUTE_TIME], [1],

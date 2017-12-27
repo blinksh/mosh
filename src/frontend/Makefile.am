@@ -15,5 +15,11 @@ if BUILD_SERVER
   bin_PROGRAMS += mosh-server
 endif
 
+if BUILD_IOS_CONTROLLER
+  noinst_LIBRARIES = libmoshiosclient.a
+endif
+
 mosh_client_SOURCES = mosh-client.cc stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
 mosh_server_SOURCES = mosh-server.cc
+
+libmoshiosclient_a_SOURCES = moshiosbridge.cc moshiosbridge.h iosclient.cc iosclient.h terminaloverlay.cc terminaloverlay.h

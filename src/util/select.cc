@@ -32,11 +32,21 @@
 
 #include "select.h"
 
-fd_set Select::dummy_fd_set;
+__thread fd_set Select::dummy_fd_set;
 
-sigset_t Select::dummy_sigset;
+__thread sigset_t Select::dummy_sigset;
 
-unsigned int Select::verbose = 0;
+__thread unsigned int Select::verbose = 0;
+
+static __thread Select * instance = NULL;
+
+Select &Select::get_instance( void ) {
+  /* COFU may or may not be thread-safe, depending on compiler */
+  if (instance == NULL) {
+    instance = new Select();
+  }
+  return *instance;
+}
 
 void Select::handle_signal( int signum )
 {

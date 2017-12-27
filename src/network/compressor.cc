@@ -56,9 +56,13 @@ string Compressor::uncompress_str( const string &input )
   return string( reinterpret_cast<char *>( buffer ), len );
 }
 
+static __thread Compressor *the_compressor = NULL;
+
 /* construct on first use */
 Compressor & Network::get_compressor( void )
 {
-  static Compressor the_compressor;
-  return the_compressor;
+  if (the_compressor == NULL) {
+    the_compressor = new Compressor();
+  }
+  return *the_compressor;
 }

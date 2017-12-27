@@ -64,7 +64,7 @@ long int myatoi( const char *str )
 
 uint64_t Crypto::unique( void )
 {
-  static uint64_t counter = 0;
+  static __thread uint64_t counter = 0;
   uint64_t rv = counter++;
   if ( counter == 0 ) {
     throw CryptoException( "Counter wrapped", true );
