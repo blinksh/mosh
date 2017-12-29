@@ -69,6 +69,29 @@ TransportSender<MyState>::TransportSender( Connection *s_connection, MyState &in
 {
 }
 
+template <class MyState>
+TransportSender<MyState>::TransportSender( Connection *s_connection, MyState &initial_state , list< TimestampedState< MyState > > restored_sent_states )
+  : connection( s_connection ), 
+    current_state( initial_state ),
+    sent_states( restored_sent_states ),
+    assumed_receiver_state( sent_states.begin() ),
+    fragmenter(),
+    next_ack_time( timestamp() ),
+    next_send_time( timestamp() ),
+    verbose( 0 ),
+    shutdown_in_progress( false ),
+    shutdown_tries( 0 ),
+    shutdown_start( -1 ),
+    ack_num( 0 ),
+    pending_data_ack( false ),
+    SEND_MINDELAY( 8 ),
+    last_heard( 0 ),
+    prng(),
+    mindelay_clock( -1 )
+{
+}
+
+
 /* Try to send roughly two frames per RTT, bounded by limits on frame rate */
 template <class MyState>
 unsigned int TransportSender<MyState>::send_interval( void ) const

@@ -61,6 +61,9 @@ private:
 
   struct winsize *window_size;
 
+  void (*state_callback)(const void*, const void *, size_t);
+  void *state_callback_context;
+
   Terminal::Framebuffer local_framebuffer, new_state;
   Overlay::OverlayManager overlays;
   Network::Transport< Network::UserStream, Terminal::Complete > *network;
@@ -71,7 +74,7 @@ private:
   bool clean_shutdown;
   unsigned int verbose;
 
-  void main_init( void );
+  void main_init( const string encoded_state );
   void process_network_input( void );
   bool process_user_input( int fd );
   bool process_resize( void );
@@ -87,14 +90,19 @@ private:
   void resume( void ); /* restore state after SIGCONT */
 
 public:
- iOSClient( int s_in_fd, FILE *s_out_fd, struct winsize *s_window_size,
+ iOSClient(
+     int s_in_fd, FILE *s_out_fd,
+     struct winsize *s_window_size, void (*s_state_callback)(const void *, const void *, size_t),
+     void *s_state_callback_context,
      const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode, unsigned int s_verbose )
-   : in_fd( s_in_fd ), out_fd( s_out_fd ), 
+   : in_fd( s_in_fd ), out_fd( s_out_fd ),
     ip( s_ip ), port( s_port ), key( s_key ),
     escape_key( 0x1E ), escape_pass_key( '^' ), escape_pass_key2( '^' ),
     escape_requires_lf( false ), escape_key_help( L"?" ),
       saved_termios(), raw_termios(),
       window_size( s_window_size ),
+      state_callback( s_state_callback ),
+      state_callback_context(s_state_callback_context),
       local_framebuffer( 1, 1 ),
       new_state( 1, 1 ),
       overlays(),
@@ -125,7 +133,7 @@ public:
 
   void init( void );
   void shutdown( void );
-  bool main( void );
+  bool main( const string encoded_state );
 
   ~iOSClient()
   {

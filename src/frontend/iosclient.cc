@@ -62,6 +62,9 @@
 
 #include "networktransport-impl.h"
 
+#include "restoration.pb.h"
+#include "crypto.h"
+
 #define STDIN_FILENO in_fd
 #define STDOUT_FILENO out_fd
 
@@ -224,7 +227,7 @@ void iOSClient::shutdown( void )
   }
 }
 
-void iOSClient::main_init( void )
+void iOSClient::main_init( const string encoded_state )
 {
   Select &sel = Select::get_instance();
   sel.add_signal( SIGWINCH );
@@ -245,8 +248,37 @@ void iOSClient::main_init( void )
   /* open network */
   Network::UserStream blank;
   Terminal::Complete local_terminal( window_size->ws_col, window_size->ws_row );
-  network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal,
+
+  Restoration::Context context;
+  if (encoded_state.size() > 0 && context.ParseFromString(encoded_state)) {
+    Crypto::set_seq(context.seq());
+    blank.apply_string(context.current_state_patch());
+
+    list < TimestampedState<Terminal::Complete> > received_states;
+    int recevied_count = context.received_states_size();
+
+   for (int i = 0; i < recevied_count; i++) {
+     Restoration::TimestampedState ts = context.received_states(i);
+     Terminal::Complete state( window_size->ws_col, window_size->ws_row );
+     state.apply_string(ts.patch());
+     local_terminal = state;
+     received_states.push_back(TimestampedState<Terminal::Complete>(ts.timestamp(), ts.num(), state));
+   }
+
+   list < TimestampedState<Network::UserStream> > sent_states;
+   int sent_count = context.sent_states_size();
+   for (int i = 0; i < sent_count; i++) {
+     Restoration::TimestampedState ts = context.sent_states(i);
+     Network::UserStream state;
+     state.apply_string(ts.patch());
+     sent_states.push_back(TimestampedState<Network::UserStream>(ts.timestamp(), ts.num(), state));
+   }
+
+   network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal, key.c_str(), ip.c_str(), port.c_str(), sent_states, received_states);
+  } else {
+    network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal,
 									       key.c_str(), ip.c_str(), port.c_str() );
+  }
 
   network->set_send_delay( 1 ); /* minimal delay on outgoing keystrokes */
 
@@ -305,7 +337,7 @@ bool iOSClient::process_user_input( int fd )
     return false;
   }
 
-  if ( !network->shutdown_in_progress() ) {
+  if (!network->shutdown_in_progress() ) {
     overlays.get_prediction_engine().set_local_frame_sent( network->get_sent_state_last() );
 
     for ( int i = 0; i < bytes_read; i++ ) {
@@ -323,7 +355,47 @@ bool iOSClient::process_user_input( int fd )
 	    return false;
 	  }
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
-	  /* Restore terminal and terminal-driver state */
+
+    Restoration::Context states;
+    list < TimestampedState<Terminal::Complete> > received_states = network->get_received_states();
+    list < TimestampedState<Network::UserStream> > sent_states = network->get_sent_states();
+
+    Network::UserStream blank;
+    string current_state_patch = network->get_current_state().diff_from(blank);
+    states.set_current_state_patch(current_state_patch);
+
+    network->start_shutdown();
+    states.set_seq(Crypto::seq());
+
+    for ( list< TimestampedState<Terminal::Complete> >::iterator i = received_states.begin();
+        i != received_states.end();
+        i++ ) {
+      Restoration::TimestampedState * ts = states.add_received_states();
+
+      TimestampedState<Terminal::Complete> state = *i;
+      ts->set_timestamp(state.timestamp);
+      ts->set_num(state.num);
+      ts->set_patch(state.state.init_diff());
+    }
+
+    for ( list< TimestampedState<Network::UserStream> >::iterator i = sent_states.begin();
+        i != sent_states.end();
+        i++ ) {
+      Restoration::TimestampedState * ts = states.add_sent_states();
+
+      TimestampedState<Network::UserStream> state = *i;
+      ts->set_timestamp(state.timestamp);
+      ts->set_num(state.num);
+      ts->set_patch(state.state.init_diff());
+    }
+
+    string encodedState = states.SerializeAsString();
+    size_t encodedStateSize = encodedState.size();
+    state_callback(state_callback_context, encodedState.data(), encodedStateSize);
+
+    throw std::logic_error("suspending");
+
+    /* Restore terminal and terminal-driver state */
 	  // swrite( out_fd, display.close().c_str() );
 
 	  // if ( tcsetattr( in_fd, TCSANOW, &saved_termios ) < 0 ) {
@@ -401,10 +473,10 @@ bool iOSClient::process_resize( void )
   return true;
 }
 
-bool iOSClient::main( void )
+bool iOSClient::main( const string encoded_state )
 {
   /* initialize signal handling and structures */
-  main_init();
+  main_init(encoded_state);
 
   /* Drop unnecessary privileges */
 #ifdef HAVE_PLEDGE

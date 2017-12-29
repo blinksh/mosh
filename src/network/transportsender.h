@@ -113,6 +113,7 @@ namespace Network {
   public:
     /* constructor */
     TransportSender( Connection *s_connection, MyState &initial_state );
+    TransportSender( Connection *s_connection, MyState &initial_state, list< TimestampedState<MyState> > restored_sent_states);
 
     /* Send data or an ack if necessary */
     void tick( void );
@@ -144,6 +145,7 @@ namespace Network {
       current_state = x;
       current_state.reset_input();
     }
+    list< TimestampedState<MyState> > get_sent_states(void) { return  sent_states; };
     void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }
 
     bool get_shutdown_in_progress( void ) const { return shutdown_in_progress; }

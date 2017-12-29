@@ -64,6 +64,8 @@ namespace Crypto {
    * function.
    */
   uint64_t unique( void );
+  uint64_t seq(void);
+  void set_seq(uint64_t value);
 
   /* 16-byte-aligned buffer, with length. */
   class AlignedBuffer {
