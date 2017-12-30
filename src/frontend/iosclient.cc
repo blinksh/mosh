@@ -229,13 +229,6 @@ void iOSClient::shutdown( void )
 
 void iOSClient::main_init( const string encoded_state )
 {
-  Select &sel = Select::get_instance();
-  sel.add_signal( SIGWINCH );
-  sel.add_signal( SIGTERM );
-  sel.add_signal( SIGINT );
-  sel.add_signal( SIGHUP );
-  sel.add_signal( SIGPIPE );
-  sel.add_signal( SIGCONT );
 
   /* local state */
   local_framebuffer = Terminal::Framebuffer( window_size->ws_col, window_size->ws_row );
@@ -323,6 +316,8 @@ void iOSClient::process_network_input( void )
   overlays.get_prediction_engine().set_local_frame_late_acked( network->get_latest_remote_state().state.get_echo_ack() );
 }
 
+int ret1 = 0;
+
 bool iOSClient::process_user_input( int fd )
 {
   const int buf_size = 16384;
@@ -393,7 +388,10 @@ bool iOSClient::process_user_input( int fd )
     size_t encodedStateSize = encodedState.size();
     state_callback(state_callback_context, encodedState.data(), encodedStateSize);
 
-    throw std::logic_error("suspending");
+    pthread_exit(&ret1);
+
+
+    //throw std::logic_error("suspending");
 
     /* Restore terminal and terminal-driver state */
 	  // swrite( out_fd, display.close().c_str() );
@@ -476,6 +474,14 @@ bool iOSClient::process_resize( void )
 bool iOSClient::main( const string encoded_state )
 {
   /* initialize signal handling and structures */
+  Select &sel = Select::get_instance();
+  sel.add_signal( SIGWINCH );
+  sel.add_signal( SIGTERM );
+  sel.add_signal( SIGINT );
+  sel.add_signal( SIGHUP );
+  sel.add_signal( SIGPIPE );
+  sel.add_signal( SIGCONT );
+  sel.add_signal( SIGINFO );
   main_init(encoded_state);
 
   /* Drop unnecessary privileges */
@@ -488,7 +494,7 @@ bool iOSClient::main( const string encoded_state )
 #endif
 
   /* prepare to poll for events */
-  Select &sel = Select::get_instance();
+  //Select &sel = Select::get_instance();
 
   while ( 1 ) {
     try {
@@ -564,9 +570,53 @@ bool iOSClient::main( const string encoded_state )
           break;
         } else if ( !network->shutdown_in_progress() ) {
           overlays.get_notification_engine().set_notification_string( wstring( L"Signal received, shutting down..." ), true );
-          network->start_shutdown();
+            network->start_shutdown();
         }
       }
+
+      if ( sel.signal( SIGINFO ) ) {
+
+        Restoration::Context states;
+        list < TimestampedState<Terminal::Complete> > received_states = network->get_received_states();
+        list < TimestampedState<Network::UserStream> > sent_states = network->get_sent_states();
+
+        Network::UserStream blank;
+        string current_state_patch = network->get_current_state().diff_from(blank);
+        states.set_current_state_patch(current_state_patch);
+
+        network->start_shutdown();
+        states.set_seq(Crypto::seq());
+
+        for ( list< TimestampedState<Terminal::Complete> >::iterator i = received_states.begin();
+            i != received_states.end();
+            i++ ) {
+          Restoration::TimestampedState * ts = states.add_received_states();
+
+          TimestampedState<Terminal::Complete> state = *i;
+          ts->set_timestamp(state.timestamp);
+          ts->set_num(state.num);
+          ts->set_patch(state.state.init_diff());
+        }
+
+        for ( list< TimestampedState<Network::UserStream> >::iterator i = sent_states.begin();
+            i != sent_states.end();
+            i++ ) {
+          Restoration::TimestampedState * ts = states.add_sent_states();
+
+          TimestampedState<Network::UserStream> state = *i;
+          ts->set_timestamp(state.timestamp);
+          ts->set_num(state.num);
+        ts->set_patch(state.state.init_diff());
+      }
+
+      string encodedState = states.SerializeAsString();
+      size_t encodedStateSize = encodedState.size();
+      state_callback(state_callback_context, encodedState.data(), encodedStateSize);
+
+      clean_shutdown = true;
+      break;
+          }
+
 
       /* quit if our shutdown has been acknowledged */
       if ( network->shutdown_in_progress() && network->shutdown_acknowledged() ) {
