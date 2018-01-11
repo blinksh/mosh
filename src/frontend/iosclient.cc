@@ -248,9 +248,9 @@ void iOSClient::main_init( const string encoded_state )
     blank.apply_string(context.current_state_patch());
 
     list < TimestampedState<Terminal::Complete> > received_states;
-    int recevied_count = context.received_states_size();
+    int received_count = context.received_states_size();
 
-   for (int i = 0; i < recevied_count; i++) {
+   for (int i = 0; i < received_count; i++) {
      Restoration::TimestampedState ts = context.received_states(i);
      Terminal::Complete state( window_size->ws_col, window_size->ws_row );
      state.apply_string(ts.patch());
