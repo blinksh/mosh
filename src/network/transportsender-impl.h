@@ -303,9 +303,9 @@ void TransportSender<MyState>::update_assumed_receiver_state( void )
   i++;
 
   while ( i != sent_states.end() ) {
-    assert( now >= i->timestamp );
-
-    if ( uint64_t(now - i->timestamp) < connection->timeout() + ACK_DELAY ) {
+    if (now >= i->timestamp) {
+      // assert( now >= i->timestamp );
+    } else if ( uint64_t(now - i->timestamp) < connection->timeout() + ACK_DELAY ) {
       assumed_receiver_state = i;
     } else {
       return;
