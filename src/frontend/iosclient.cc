@@ -243,6 +243,8 @@ void iOSClient::main_init( const string encoded_state )
   Terminal::Complete local_terminal( window_size->ws_col, window_size->ws_row );
 
   Restoration::Context context;
+  uint64_t now = timestamp();
+
   if (encoded_state.size() > 0 && context.ParseFromString(encoded_state)) {
     Crypto::set_seq(context.seq());
     blank.apply_string(context.current_state_patch());
@@ -255,7 +257,11 @@ void iOSClient::main_init( const string encoded_state )
      Terminal::Complete state( window_size->ws_col, window_size->ws_row );
      state.apply_string(ts.patch());
      local_terminal = state;
-     received_states.push_back(TimestampedState<Terminal::Complete>(ts.timestamp(), ts.num(), state));
+     uint64_t restored_ts = 0;
+     if (ts.timestamp() < now) {
+       restored_ts = now - ts.timestamp();
+     }
+     received_states.push_back(TimestampedState<Terminal::Complete>(restored_ts, ts.num(), state));
    }
 
    list < TimestampedState<Network::UserStream> > sent_states;
@@ -264,7 +270,11 @@ void iOSClient::main_init( const string encoded_state )
      Restoration::TimestampedState ts = context.sent_states(i);
      Network::UserStream state;
      state.apply_string(ts.patch());
-     sent_states.push_back(TimestampedState<Network::UserStream>(ts.timestamp(), ts.num(), state));
+     uint64_t restored_ts = 0;
+     if (ts.timestamp() < now) {
+       restored_ts = now - ts.timestamp();
+     }
+     sent_states.push_back(TimestampedState<Network::UserStream>(restored_ts, ts.num(), state));
    }
 
    network = new Network::Transport< Network::UserStream, Terminal::Complete >( blank, local_terminal, key.c_str(), ip.c_str(), port.c_str(), sent_states, received_states);
@@ -352,6 +362,7 @@ bool iOSClient::process_user_input( int fd )
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
 
     Restoration::Context states;
+    uint64_t now = timestamp();
     list < TimestampedState<Terminal::Complete> > received_states = network->get_received_states();
     list < TimestampedState<Network::UserStream> > sent_states = network->get_sent_states();
 
@@ -368,7 +379,8 @@ bool iOSClient::process_user_input( int fd )
       Restoration::TimestampedState * ts = states.add_received_states();
 
       TimestampedState<Terminal::Complete> state = *i;
-      ts->set_timestamp(state.timestamp);
+      uint64_t ts_offset = now - state.timestamp;
+      ts->set_timestamp(ts_offset);
       ts->set_num(state.num);
       ts->set_patch(state.state.init_diff());
     }
@@ -379,7 +391,8 @@ bool iOSClient::process_user_input( int fd )
       Restoration::TimestampedState * ts = states.add_sent_states();
 
       TimestampedState<Network::UserStream> state = *i;
-      ts->set_timestamp(state.timestamp);
+      uint64_t ts_offset = now - state.timestamp;
+      ts->set_timestamp(ts_offset);
       ts->set_num(state.num);
       ts->set_patch(state.state.init_diff());
     }
@@ -575,6 +588,7 @@ bool iOSClient::main( const string encoded_state )
       }
 
       if ( sel.signal( SIGINFO ) ) {
+        uint64_t now = timestamp();
 
         Restoration::Context states;
         list < TimestampedState<Terminal::Complete> > received_states = network->get_received_states();
@@ -593,7 +607,8 @@ bool iOSClient::main( const string encoded_state )
           Restoration::TimestampedState * ts = states.add_received_states();
 
           TimestampedState<Terminal::Complete> state = *i;
-          ts->set_timestamp(state.timestamp);
+          uint64_t ts_offset = now - state.timestamp;
+          ts->set_timestamp(ts_offset);
           ts->set_num(state.num);
           ts->set_patch(state.state.init_diff());
         }
@@ -604,7 +619,8 @@ bool iOSClient::main( const string encoded_state )
           Restoration::TimestampedState * ts = states.add_sent_states();
 
           TimestampedState<Network::UserStream> state = *i;
-          ts->set_timestamp(state.timestamp);
+          uint64_t ts_offset = now - state.timestamp;
+          ts->set_timestamp(ts_offset);
           ts->set_num(state.num);
         ts->set_patch(state.state.init_diff());
       }
