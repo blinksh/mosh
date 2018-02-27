@@ -359,6 +359,8 @@ bool iOSClient::process_user_input( int fd )
 	  } else {
 	    return false;
 	  }
+	} else if ( the_byte == 0x0C ) { // Ctrl-L
+	  repaint_requested = true;
 	} else if ( the_byte == 0x1a ) { /* Suspend sequence is escape_key Ctrl-Z */
 
     Restoration::Context states;
@@ -450,9 +452,11 @@ bool iOSClient::process_user_input( int fd )
 
       lf_entered = ( (the_byte == 0x0A) || (the_byte == 0x0D) ); /* LineFeed, Ctrl-J, '\n' or CarriageReturn, Ctrl-M, '\r' */
 
-      if ( the_byte == 0x0C ) { /* Ctrl-L */
+      /* We replacing it with Ctrl-^ Ctrl-L
+      if ( the_byte == 0x0C ) { // Ctrl-L
 	repaint_requested = true;
       }
+      */
 
       network->get_current_state().push_back( Parser::UserByte( the_byte ) );		
     }
