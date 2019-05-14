@@ -106,8 +106,8 @@ public:
       local_framebuffer( 1, 1 ),
       new_state( 1, 1 ),
       overlays(),
-      network( NULL ),
-      display( false ), /* use TERM environment var to initialize display */
+      network( ),
+      display( true ), /* use TERM environment var to initialize display */
       connecting_notification(),
       repaint_requested( false ),
       lf_entered( false ),

@@ -64,98 +64,9 @@
 using namespace Terminal;
 
 //#if !defined IOS_CONTROLLER
-bool Display::ti_flag( const char *capname )
-{
-  // int val = tigetflag( const_cast<char *>( capname ) );
-  // if ( val == -1 ) {
-  //   throw std::invalid_argument( std::string( "Invalid terminfo boolean capability " ) + capname );
-  // }
-  //  return val;
-  return true;
-}
-
-int Display::ti_num( const char *capname )
-{
-  // int val = tigetnum( const_cast<char *>( capname ) );
-  // if ( val == -2 ) {
-  //   throw std::invalid_argument( std::string( "Invalid terminfo numeric capability " ) + capname );
-  // }
-  return 256;
-}
-
-const char *Display::ti_str( const char *capname )
-{
-  const char *val = NULL;
-  // const char *val = tigetstr( const_cast<char *>( capname ) );
-  // if ( val == (const char *)-1 ) {
-  //   throw std::invalid_argument( std::string( "Invalid terminfo string capability " ) + capname );
-  // }
-  //  return val;
-  return val;
-}
 
 Display::Display( bool use_environment )
   : has_ech( true ), has_bce( true ), has_title( true ), smcup( NULL ), rmcup( NULL )
 {
-  // if ( use_environment ) {
-  //   int errret = -2;
-  //   int ret = setupterm( (char *)0, 1, &errret );
-
-  //   if ( ret != OK ) {
-  //     switch ( errret ) {
-  //     case 1:
-  // 	throw std::runtime_error( "Terminal is hardcopy and cannot be used by curses applications." );
-  // 	break;
-  //     case 0:
-  // 	throw std::runtime_error( "Unknown terminal type." );
-  // 	break;
-  //     case -1:
-  // 	throw std::runtime_error( "Terminfo database could not be found." );
-  // 	break;
-  //     default:
-  // 	throw std::runtime_error( "Unknown terminfo error." );
-  // 	break;
-  //     } 
-  //   }
-
-    /* check for ECH */
-  //has_ech = ti_str( "ech" );
-
-    /* check for BCE */
-  //  has_bce = ti_flag( "bce" );
-
-    /* Check if we can set the window title and icon name.  terminfo does not
-       have reliable information on this, so we hardcode a whitelist of
-       terminal type prefixes.  This is the list from Debian's default
-       screenrc, plus "screen" itself (which also covers tmux). */
-    // static const char * const title_term_types[] = {
-    //   "xterm", "rxvt", "kterm", "Eterm", "screen"
-    // };
-
-    // has_title = false;
-    // const char *term_type = getenv( "TERM" );
-    // if ( term_type ) {
-    //   for ( size_t i = 0;
-    //         i < sizeof( title_term_types ) / sizeof( const char * );
-    //         i++ ) {
-    //     if ( 0 == strncmp( term_type, title_term_types[ i ],
-    //                        strlen( title_term_types[ i ] ) ) ) {
-    //       has_title = true;
-    //       break;
-    //     }
-    //   }
-    // }
-
-    /* posterization disabled because server now only advertises
-       xterm-256color when client has colors = 256 */
-    /*
-    posterize_colors = ti_num( "colors" ) < 256;
-    */
-
-    // if ( !getenv( "MOSH_NO_TERM_INIT" ) ) {
-    //   smcup = ti_str("smcup");
-    //   rmcup = ti_str("rmcup");
-    // }
-  //  }
 }
 //#endif

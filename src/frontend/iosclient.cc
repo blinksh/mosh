@@ -68,6 +68,8 @@
 #define STDIN_FILENO in_fd
 #define STDOUT_FILENO out_fd
 
+using std::wstring;
+
 void iOSClient::resume( void )
 {
   /* Restore termios state */
@@ -517,11 +519,11 @@ bool iOSClient::main( const string encoded_state )
     try {
       output_new_frame();
 
-      int wait_time = min( network->wait_time(), overlays.wait_time() );
+      int wait_time = std::min( network->wait_time(), overlays.wait_time() );
 
       /* Handle startup "Connecting..." message */
       if ( still_connecting() ) {
-	wait_time = min( 250, wait_time );
+	wait_time = std::min( 250, wait_time );
       }
 
       /* poll for events */
