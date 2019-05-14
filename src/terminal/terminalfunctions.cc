@@ -31,6 +31,7 @@
 */
 
 #include <unistd.h>
+#include <algorithm>
 #include <string>
 #include <stdio.h>
 
@@ -62,6 +63,8 @@ static void CSI_EL( Framebuffer *fb, Dispatcher *dispatch )
   case 2: /* all of line */
     fb->reset_row( fb->get_mutable_row( -1 ) );
     break;
+  default:
+    break;
   }
 }
 
@@ -86,6 +89,8 @@ static void CSI_ED( Framebuffer *fb, Dispatcher *dispatch ) {
     for ( int y = 0; y < fb->ds.get_height(); y++ ) {
       fb->reset_row( fb->get_mutable_row( y ) );
     }
+    break;
+  default:
     break;
   }
 }
@@ -112,10 +117,11 @@ static void CSI_cursormove( Framebuffer *fb, Dispatcher *dispatch )
     break;
   case 'H':
   case 'f':
-    int x = dispatch->getparam( 0, 1 );
-    int y = dispatch->getparam( 1, 1 );
-    fb->ds.move_row( x - 1 );
-    fb->ds.move_col( y - 1 );
+    fb->ds.move_row( dispatch->getparam( 0, 1 ) - 1 );
+    fb->ds.move_col( dispatch->getparam( 1, 1 ) - 1 );
+    break;
+  default:
+    break;
   }
 }
 
@@ -259,6 +265,8 @@ static void CSI_TBC( Framebuffer *fb, Dispatcher *dispatch )
       fb->ds.clear_tab( x );
     }
     break;
+  default:
+    break;
   }
 }
 
@@ -293,6 +301,8 @@ static bool *get_DEC_mode( int param, Framebuffer *fb ) {
     return &(fb->ds.mouse_alternate_scroll);
   case 2004: /* bracketed paste */
     return &(fb->ds.bracketed_paste);
+  default:
+    break;
   }
   return NULL;
 }
@@ -338,8 +348,7 @@ static Function func_CSI_DECSM( CSI, "?h", CSI_DECSM, false );
 static Function func_CSI_DECRM( CSI, "?l", CSI_DECRM, false );
 
 static bool *get_ANSI_mode( int param, Framebuffer *fb ) {
-  switch ( param ) {
-  case 4: /* insert/replace mode */
+  if ( param == 4 ) { /* insert/replace mode */
     return &(fb->ds.insert_mode);
   }
   return NULL;
@@ -414,6 +423,27 @@ static void CSI_SGR( Framebuffer *fb, Dispatcher *dispatch )
       i += 2;
       continue;
     }
+
+    /* True color support: ESC[ ... [34]8;2;<r>;<g>;<b> ... m */
+    if ( (rendition == 38 || rendition == 48) &&
+         (dispatch->param_count() - i >= 5) &&
+         (dispatch->getparam( i+1, -1 ) == 2)) {
+      unsigned int red = dispatch->getparam(i+2, 0);
+      unsigned int green = dispatch->getparam(i+3, 0);
+      unsigned int blue = dispatch->getparam(i+4, 0);
+      unsigned int color;
+
+      color = Renditions::make_true_color( red, green, blue );
+
+      if ( rendition == 38 ) {
+        fb->ds.set_foreground_color( color );
+      } else {
+        fb->ds.set_background_color( color );
+      }
+      i += 4;
+      continue;
+    }
+
     fb->ds.add_rendition( rendition );
   }
 }
@@ -449,6 +479,8 @@ static void CSI_DSR( Framebuffer *fb, Dispatcher *dispatch )
 	      fb->ds.get_cursor_row() + 1,
 	      fb->ds.get_cursor_col() + 1 );
     dispatch->terminal_to_host.append( cpr );
+    break;
+  default:
     break;
   }
 }
@@ -559,7 +591,15 @@ static Function func_CSI_DECSTR( CSI, "!p", CSI_DECSTR );
 /* xterm uses an Operating System Command to set the window title */
 void Dispatcher::OSC_dispatch( const Parser::OSC_End *act __attribute((unused)), Framebuffer *fb )
 {
-  if ( OSC_string.size() >= 1 ) {
+  /* handle osc copy clipboard sequence 52;c; */
+  if ( OSC_string.size() >= 5 && OSC_string[ 0 ] == L'5' &&
+       OSC_string[ 1 ] == L'2' && OSC_string[ 2 ] == L';' &&
+       OSC_string[ 3 ] == L'c' && OSC_string[ 4 ] == L';') {
+      Terminal::Framebuffer::title_type clipboard(
+              OSC_string.begin() + 5, OSC_string.end() );
+      fb->set_clipboard( clipboard );
+  /* handle osc terminal title sequence */
+  } else if ( OSC_string.size() >= 1 ) {
     long cmd_num = -1;
     int offset = 0;
     if ( OSC_string[ 0 ] == L';' ) {
@@ -574,11 +614,12 @@ void Dispatcher::OSC_dispatch( const Parser::OSC_End *act __attribute((unused)),
       cmd_num = OSC_string[ 0 ] - L'0';
       offset = 2;
     }
-    bool set_icon = (cmd_num == 0 || cmd_num == 1);
-    bool set_title = (cmd_num == 0 || cmd_num == 2);
+    bool set_icon = cmd_num == 0 || cmd_num == 1;
+    bool set_title = cmd_num == 0 || cmd_num == 2;
     if ( set_icon || set_title ) {
       fb->set_title_initialized();
-      Terminal::Framebuffer::title_type newtitle( OSC_string.begin() + offset, OSC_string.end() );
+      int title_length = std::min(OSC_string.size(), (size_t)256);
+      Terminal::Framebuffer::title_type newtitle( OSC_string.begin() + offset, OSC_string.begin() + title_length );
       if ( set_icon )  { fb->set_icon_name( newtitle ); }
       if ( set_title ) { fb->set_window_title( newtitle ); }
     }

@@ -45,15 +45,6 @@ Cell::Cell( color_type background_color )
     fallback( false ),
     wrap( false )
 {}
-Cell::Cell() /* default constructor required by C++11 STL */
-  : contents(),
-    renditions( 0 ),
-    wide( false ),
-    fallback( false ),
-    wrap( false )
-{
-  assert( false );
-}
 
 void Cell::reset( color_type background_color )
 {
@@ -87,7 +78,7 @@ DrawState::DrawState( int s_width, int s_height )
 }
 
 Framebuffer::Framebuffer( int s_width, int s_height )
-  : rows(), icon_name(), window_title(), bell_count( 0 ), title_initialized( false ), ds( s_width, s_height )
+  : rows(), icon_name(), window_title(), clipboard(), bell_count( 0 ), title_initialized( false ), ds( s_width, s_height )
 {
   assert( s_height > 0 );
   assert( s_width > 0 );
@@ -98,7 +89,8 @@ Framebuffer::Framebuffer( int s_width, int s_height )
 
 Framebuffer::Framebuffer( const Framebuffer &other )
   : rows( other.rows ), icon_name( other.icon_name ), window_title( other.window_title ),
-    bell_count( other.bell_count ), title_initialized( other.title_initialized ), ds( other.ds )
+    clipboard( other.clipboard ), bell_count( other.bell_count ),
+    title_initialized( other.title_initialized ), ds( other.ds )
 {
 }
 
@@ -108,6 +100,7 @@ Framebuffer & Framebuffer::operator=( const Framebuffer &other )
     rows = other.rows;
     icon_name =  other.icon_name;
     window_title = other.window_title;
+    clipboard = other.clipboard;
     bell_count = other.bell_count;
     title_initialized = other.title_initialized;
     ds = other.ds;
@@ -227,14 +220,13 @@ int DrawState::get_next_tab( int count ) const
       }
     }
     return -1;
-  } else {
-    for ( int i = cursor_col - 1; i > 0; i-- ) {
-      if ( tabs[ i ] && ++count == 0 ) {
-	return i;
-      }
-    }
-    return 0;
   }
+  for ( int i = cursor_col - 1; i > 0; i-- ) {
+    if ( tabs[ i ] && ++count == 0 ) {
+      return i;
+    }
+  }
+  return 0;
 }
 
 void DrawState::set_scrolling_region( int top, int bottom )
@@ -312,21 +304,21 @@ void Framebuffer::insert_line( int before_row, int count )
     return;
   }
 
-  int max_scroll = ds.get_scrolling_region_bottom_row() + 1 - before_row;
-  if ( count > max_scroll ) {
-    count = max_scroll;
+  int scroll = ds.get_scrolling_region_bottom_row() + 1 - before_row;
+  if ( count < scroll ) {
+    scroll = count;
   }
 
-  if ( count == 0 ) {
+  if ( scroll == 0 ) {
     return;
   }
 
   // delete old rows
-  rows_type::iterator start = rows.begin() + ds.get_scrolling_region_bottom_row() + 1 - count;
-  rows.erase( start, start + count );
+  rows_type::iterator start = rows.begin() + ds.get_scrolling_region_bottom_row() + 1 - scroll;
+  rows.erase( start, start + scroll );
   // insert new rows
   start = rows.begin() + before_row;
-  rows.insert( start, count, newrow());
+  rows.insert( start, scroll, newrow());
 }
 
 void Framebuffer::delete_line( int row, int count )
@@ -336,32 +328,26 @@ void Framebuffer::delete_line( int row, int count )
     return;
   }
 
-  int max_scroll = ds.get_scrolling_region_bottom_row() + 1 - row;
-  if ( count > max_scroll ) {
-    count = max_scroll;
+  int scroll = ds.get_scrolling_region_bottom_row() + 1 - row;
+  if ( count < scroll ) {
+    scroll = count;
   }
 
-  if ( count == 0 ) {
+  if ( scroll == 0 ) {
     return;
   }
 
   // delete old rows
   rows_type::iterator start = rows.begin() + row;
-  rows.erase( start, start + count );
+  rows.erase( start, start + scroll );
   // insert a block of dummy rows
-  start = rows.begin() + ds.get_scrolling_region_bottom_row() + 1 - count;
-  rows.insert( start, count, newrow());
+  start = rows.begin() + ds.get_scrolling_region_bottom_row() + 1 - scroll;
+  rows.insert( start, scroll, newrow());
 }
 
 Row::Row( const size_t s_width, const color_type background_color )
   : cells( s_width, Cell( background_color ) ), gen( get_gen() )
 {}
-
-Row::Row() /* default constructor required by C++11 STL */
-  : cells( 1, Cell() ), gen( get_gen() )
-{
-  assert( false );
-}
 
 uint64_t Row::get_gen() const
 {
@@ -397,6 +383,7 @@ void Framebuffer::reset( void )
   ds = DrawState( width, height );
   rows = rows_type( height, newrow() );
   window_title.clear();
+  clipboard.clear();
   /* do not reset bell_count */
 }
 
@@ -510,6 +497,7 @@ void Renditions::set_rendition( color_type num )
   case 5: case 25: set_attribute(blink, value); break;
   case 7: case 27: set_attribute(inverse, value); break;
   case 8: case 28: set_attribute(invisible, value); break;
+  default: break; /* ignore unknown rendition */
   }
 }
 
@@ -517,6 +505,8 @@ void Renditions::set_foreground_color( int num )
 {
   if ( (0 <= num) && (num <= 255) ) {
     foreground_color = 30 + num;
+  } else if ( is_true_color( num ) ) {
+    foreground_color = num;
   }
 }
 
@@ -524,12 +514,15 @@ void Renditions::set_background_color( int num )
 {
   if ( (0 <= num) && (num <= 255) ) {
     background_color = 40 + num;
+  } else if ( is_true_color( num ) ) {
+    background_color = num;
   }
 }
 
 std::string Renditions::sgr( void ) const
 {
   std::string ret;
+  char col[64];
 
   ret.append( "\033[0" );
   if ( get_attribute( bold ) ) ret.append( ";1" );
@@ -539,34 +532,33 @@ std::string Renditions::sgr( void ) const
   if ( get_attribute( inverse ) ) ret.append( ";7" );
   if ( get_attribute( invisible ) ) ret.append( ";8" );
 
-  if ( foreground_color
-       && (foreground_color <= 37) ) {
-    /* ANSI foreground color */
-    char col[ 8 ];
-    snprintf( col, 8, ";%d", foreground_color );
+  if ( foreground_color ) {
+    if ( is_true_color( foreground_color ) ) {
+      snprintf( col, sizeof( col ), ";38;2;%u;%u;%u",
+		(foreground_color >> 16) & 0xff,
+		(foreground_color >> 8) & 0xff,
+		foreground_color & 0xff);
+    } else if ( foreground_color > 37 ) { /* use 256-color set */
+      snprintf( col, sizeof( col ), ";38;5;%u", foreground_color - 30 );
+    } else { /* ANSI foreground color */
+      snprintf( col, sizeof( col ), ";%u", static_cast<unsigned int>( foreground_color ) );
+    }
     ret.append( col );
   }
-
-  if ( background_color
-       && (background_color <= 47) ) {
-    char col[ 8 ];
-    snprintf( col, 8, ";%d", background_color );
+  if ( background_color ) {
+    if ( is_true_color( background_color ) ) {
+      snprintf( col, sizeof( col ), ";48;2;%u;%u;%u",
+		(background_color >> 16) & 0xff,
+		(background_color >> 8) & 0xff,
+		background_color & 0xff);
+    } else if ( background_color > 47 ) { /* use 256-color set */
+      snprintf( col, sizeof( col ), ";48;5;%u", background_color - 40 );
+    } else { /* ANSI background color */
+      snprintf( col, sizeof( col ), ";%u", static_cast<unsigned int>( background_color ) );
+    }
     ret.append( col );
   }
-
   ret.append( "m" );
-
-  if ( foreground_color > 37 ) { /* use 256-color set */
-    char col[ 64 ];
-    snprintf( col, 64, "\033[38;5;%dm", foreground_color - 30 );
-    ret.append( col );
-  }
-
-  if ( background_color > 47 ) { /* use 256-color set */
-    char col[ 64 ];
-    snprintf( col, 64, "\033[48;5;%dm", background_color - 40 );
-    ret.append( col );
-  }
 
   return ret;
 }
@@ -594,23 +586,22 @@ std::string Cell::debug_contents( void ) const
 {
   if ( contents.empty() ) {
     return "'_' ()";
-  } else {
-    std::string chars( 1, '\'' );
-    print_grapheme( chars );
-    chars.append( "' [" );
-    const char *lazycomma = "";
-    char buf[64];
-    for ( content_type::const_iterator i = contents.begin();
-	  i < contents.end();
-	  i++ ) {
-
-      snprintf( buf, sizeof buf, "%s0x%02x", lazycomma, static_cast<uint8_t>(*i) );
-      chars.append( buf );
-      lazycomma = ", ";
-    }
-    chars.append( "]" );
-    return chars;
   }
+  std::string chars( 1, '\'' );
+  print_grapheme( chars );
+  chars.append( "' [" );
+  const char *lazycomma = "";
+  char buf[64];
+  for ( content_type::const_iterator i = contents.begin();
+	i < contents.end();
+	i++ ) {
+
+    snprintf( buf, sizeof buf, "%s0x%02x", lazycomma, static_cast<uint8_t>(*i) );
+    chars.append( buf );
+    lazycomma = ", ";
+  }
+  chars.append( "]" );
+  return chars;
 }
 
 bool Cell::compare( const Cell &other ) const

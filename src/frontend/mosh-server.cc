@@ -52,6 +52,9 @@
 #ifdef HAVE_UTEMPTER
 #include <utempter.h>
 #endif
+#ifdef HAVE_SYSLOG
+#include <syslog.h>
+#endif
 #include <sys/socket.h>
 #include <netdb.h>
 #include <time.h>
@@ -104,13 +107,14 @@ static int run_server( const char *desired_ip, const char *desired_port,
 		       const string &command_path, char *command_argv[],
 		       const int colors, unsigned int verbose, bool with_motd );
 
-using namespace std;
 
 static void print_version( FILE *file )
 {
-  fprintf( file, "mosh-server (%s) [build %s]\n", PACKAGE_STRING, BUILD_VERSION );
-  fprintf( file, "Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n" );
-  fprintf( file, "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n" );
+  fputs( "mosh-server (" PACKAGE_STRING ") [build " BUILD_VERSION "]\n"
+	 "Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n"
+	 "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n"
+	 "This is free software: you are free to change and redistribute it.\n"
+	 "There is NO WARRANTY, to the extent permitted by law.\n", file );
 }
 
 static void print_usage( FILE *stream, const char *argv0 )
@@ -142,14 +146,14 @@ static string get_SSH_IP( void )
 {
   const char *SSH_CONNECTION = getenv( "SSH_CONNECTION" );
   if ( !SSH_CONNECTION ) { /* Older sshds don't set this */
-    fprintf( stderr, "Warning: SSH_CONNECTION not found; binding to any interface.\n" );
+    fputs( "Warning: SSH_CONNECTION not found; binding to any interface.\n", stderr );
     return string( "" );
   }
-  istringstream ss( SSH_CONNECTION );
+  std::istringstream ss( SSH_CONNECTION );
   string dummy, local_interface_IP;
   ss >> dummy >> dummy >> local_interface_IP;
   if ( !ss ) {
-    fprintf( stderr, "Warning: Could not parse SSH_CONNECTION; binding to any interface.\n" );
+    fputs( "Warning: Could not parse SSH_CONNECTION; binding to any interface.\n", stderr );
     return string( "" );
   }
 
@@ -248,8 +252,9 @@ int main( int argc, char *argv[] )
 	locale_vars.push_back( string( optarg ) );
 	break;
       default:
-	print_usage( stderr, argv[ 0 ] );
 	/* don't die on unknown options */
+	print_usage( stderr, argv[ 0 ] );
+	break;
       }
     }
   } else if ( argc == 1 ) {
@@ -274,6 +279,10 @@ int main( int argc, char *argv[] )
   }
 
   bool with_motd = false;
+
+  #ifdef HAVE_SYSLOG
+  openlog(argv[0], LOG_PID | LOG_NDELAY, LOG_AUTH);
+  #endif
 
   /* Get shell */
   char *my_argv[ 2 ];
@@ -343,9 +352,12 @@ int main( int argc, char *argv[] )
       LocaleVar client_ctype = get_ctype();
       string client_charset( locale_charset() );
 
-      fprintf( stderr, "mosh-server needs a UTF-8 native locale to run.\n\n" );
-      fprintf( stderr, "Unfortunately, the local environment (%s) specifies\nthe character set \"%s\",\n\n", native_ctype.str().c_str(), native_charset.c_str() );
-      fprintf( stderr, "The client-supplied environment (%s) specifies\nthe character set \"%s\".\n\n", client_ctype.str().c_str(), client_charset.c_str() );
+      fprintf( stderr, "mosh-server needs a UTF-8 native locale to run.\n\n"
+	       "Unfortunately, the local environment (%s) specifies\n"
+	       "the character set \"%s\",\n\n"
+	       "The client-supplied environment (%s) specifies\n"
+	       "the character set \"%s\".\n\n",
+	       native_ctype.str().c_str(), native_charset.c_str(), client_ctype.str().c_str(), client_charset.c_str() );
       int unused __attribute((unused)) = system( "locale" );
       exit( 1 );
     }
@@ -375,9 +387,9 @@ static int run_server( const char *desired_ip, const char *desired_port,
     char *endptr;
     network_timeout = strtol( timeout_envar, &endptr, 10 );
     if ( *endptr != '\0' || ( network_timeout == 0 && errno == EINVAL ) ) {
-      fprintf( stderr, "MOSH_SERVER_NETWORK_TMOUT not a valid integer, ignoring\n" );
+      fputs( "MOSH_SERVER_NETWORK_TMOUT not a valid integer, ignoring\n", stderr );
     } else if ( network_timeout < 0 ) {
-      fprintf( stderr, "MOSH_SERVER_NETWORK_TMOUT is negative, ignoring\n" );
+      fputs( "MOSH_SERVER_NETWORK_TMOUT is negative, ignoring\n", stderr );
       network_timeout = 0;
     }
   }
@@ -389,9 +401,9 @@ static int run_server( const char *desired_ip, const char *desired_port,
     char *endptr;
     network_signaled_timeout = strtol( signal_envar, &endptr, 10 );
     if ( *endptr != '\0' || ( network_signaled_timeout == 0 && errno == EINVAL ) ) {
-      fprintf( stderr, "MOSH_SERVER_SIGNAL_TMOUT not a valid integer, ignoring\n" );
+      fputs( "MOSH_SERVER_SIGNAL_TMOUT not a valid integer, ignoring\n", stderr );
     } else if ( network_signaled_timeout < 0 ) {
-      fprintf( stderr, "MOSH_SERVER_SIGNAL_TMOUT is negative, ignoring\n" );
+      fputs( "MOSH_SERVER_SIGNAL_TMOUT is negative, ignoring\n", stderr );
       network_signaled_timeout = 0;
     }
   }
@@ -412,7 +424,8 @@ static int run_server( const char *desired_ip, const char *desired_port,
 
   /* open network */
   Network::UserStream blank;
-  ServerConnection *network = new ServerConnection( terminal, blank, desired_ip, desired_port );
+  typedef shared::shared_ptr<ServerConnection> NetworkPointer;
+  NetworkPointer network( new ServerConnection( terminal, blank, desired_ip, desired_port ) );
 
   network->set_verbose( verbose );
   Select::set_verbose( verbose );
@@ -437,30 +450,32 @@ static int run_server( const char *desired_ip, const char *desired_port,
 
 
   /* detach from terminal */
-  fflush( stdout );
-  fflush( stderr );
+  fflush( NULL );
   pid_t the_pid = fork();
   if ( the_pid < 0 ) {
     perror( "fork" );
   } else if ( the_pid > 0 ) {
-    fprintf( stderr, "\nmosh-server (%s) [build %s]\n", PACKAGE_STRING, BUILD_VERSION );
-    fprintf( stderr, "Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n" );
-    fprintf( stderr, "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n\n" );
+    fputs( "\nmosh-server (" PACKAGE_STRING ") [build " BUILD_VERSION "]\n"
+	   "Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n"
+	   "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n"
+	   "This is free software: you are free to change and redistribute it.\n"
+	   "There is NO WARRANTY, to the extent permitted by law.\n\n", stderr );
 
     fprintf( stderr, "[mosh-server detached, pid = %d]\n", static_cast<int>(the_pid) );
 #ifndef HAVE_IUTF8
-    fprintf( stderr, "\nWarning: termios IUTF8 flag not defined.\nCharacter-erase of multibyte character sequence\nprobably does not work properly on this platform.\n" );
+    fputs( "\nWarning: termios IUTF8 flag not defined.\n"
+	   "Character-erase of multibyte character sequence\n"
+	   "probably does not work properly on this platform.\n", stderr );
 #endif /* HAVE_IUTF8 */
 
-    fflush( stdout );
-    fflush( stderr );
+    fflush( NULL );
     if ( isatty( STDOUT_FILENO ) ) {
       tcdrain( STDOUT_FILENO );
     }
     if ( isatty( STDERR_FILENO ) ) {
       tcdrain( STDERR_FILENO );
     }
-    _exit( 0 );
+    exit( 0 );
   }
 
   int master;
@@ -511,8 +526,12 @@ static int run_server( const char *desired_ip, const char *desired_port,
     fatal_assert( 0 == sigaction( SIGHUP, &sa, NULL ) );
     fatal_assert( 0 == sigaction( SIGPIPE, &sa, NULL ) );
 
+    #ifdef HAVE_SYSLOG
+    closelog();
+    #endif
+
     /* close server-related file descriptors */
-    delete network;
+    network.reset();
 
     /* set IUTF8 if available */
 #ifdef HAVE_IUTF8
@@ -574,15 +593,13 @@ static int run_server( const char *desired_ip, const char *desired_port,
     /* Wait for parent to release us. */
     char linebuf[81];
     if (fgets(linebuf, sizeof linebuf, stdin) == NULL) {
-      perror( "parent signal" );
-      _exit( 1 );
+      err( 1, "parent signal" );
     }
 
     Crypto::reenable_dumping_core();
 
     if ( execvp( command_path.c_str(), command_argv ) < 0 ) {
-      perror( "execvp" );
-      _exit( 1 );
+      err( 1, "execvp: %s", command_path.c_str() );
     }
   } else {
     /* parent */
@@ -619,11 +636,9 @@ static int run_server( const char *desired_ip, const char *desired_port,
       perror( "close" );
       exit( 1 );
     }
-
-    delete network;
   }
 
-  printf( "\n[mosh-server is exiting.]\n" );
+  fputs( "\n[mosh-server is exiting.]\n", stdout );
 
   return 0;
 }
@@ -643,24 +658,34 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 
   #ifdef HAVE_UTEMPTER
   bool connected_utmp = false;
-
+  #endif
+  #if defined(HAVE_SYSLOG) || defined(HAVE_UTEMPTER)
+  bool force_connection_change_evt = false;
   Addr saved_addr;
   socklen_t saved_addr_len = 0;
   #endif
 
+  #ifdef HAVE_SYSLOG
+  struct passwd *pw = getpwuid( getuid() );
+  if (pw == NULL) {
+    throw NetworkException( std::string( "serve: getpwuid: " ) + strerror( errno ), 0 );
+  }
+  syslog(LOG_INFO, "user %s session begin", pw->pw_name);
+  #endif
+
   bool child_released = false;
 
-  while ( 1 ) {
+  while ( true ) {
     try {
       static const uint64_t timeout_if_no_client = 60000;
       int timeout = INT_MAX;
       uint64_t now = Network::timestamp();
 
-      timeout = min( timeout, network.wait_time() );
-      timeout = min( timeout, terminal.wait_time( now ) );
+      timeout = std::min( timeout, network.wait_time() );
+      timeout = std::min( timeout, terminal.wait_time( now ) );
       if ( (!network.get_remote_state_num())
 	   || network.shutdown_in_progress() ) {
-        timeout = min( timeout, 5000 );
+        timeout = std::min( timeout, 5000 );
       }
       /*
        * The server goes completely asleep if it has no remote peer.
@@ -675,7 +700,7 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 	  /* 24 days might be too soon.  That's OK. */
 	  network_sleep = INT_MAX;
 	}
-	timeout = min( timeout, static_cast<int>(network_sleep) );
+	timeout = std::min( timeout, static_cast<int>(network_sleep) );
       }
 
       /* poll for events */
@@ -711,22 +736,24 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 	  us.apply_string( network.get_remote_diff() );
 	  /* apply userstream to terminal */
 	  for ( size_t i = 0; i < us.size(); i++ ) {
-	    const Parser::Action *action = us.get_action( i );
-	    if ( typeid( *action ) == typeid( Parser::Resize ) ) {
+	    const Parser::Action &action = us.get_action( i );
+	    if ( typeid( action ) == typeid( Parser::Resize ) ) {
 	      /* apply only the last consecutive Resize action */
-	      while ( i < us.size() - 1 &&
-		   typeid( us.get_action( i + 1 ) ) == typeid( Parser::Resize ) ) {
-		i++;
+	      if ( i < us.size() - 1 ) {
+		const Parser::Action &next = us.get_action( i + 1 );
+		if ( typeid( next ) == typeid( Parser::Resize ) ) {
+		  continue;
+		}
 	      }
 	      /* tell child process of resize */
-	      const Parser::Resize *res = static_cast<const Parser::Resize *>( action );
+	      const Parser::Resize &res = static_cast<const Parser::Resize &>( action );
 	      struct winsize window_size;
 	      if ( ioctl( host_fd, TIOCGWINSZ, &window_size ) < 0 ) {
 		perror( "ioctl TIOCGWINSZ" );
 		network.start_shutdown();
 	      }
-	      window_size.ws_col = res->width;
-	      window_size.ws_row = res->height;
+	      window_size.ws_col = res.width;
+	      window_size.ws_row = res.height;
 	      if ( ioctl( host_fd, TIOCSWINSZ, &window_size ) < 0 ) {
 		perror( "ioctl TIOCSWINSZ" );
 		network.start_shutdown();
@@ -744,14 +771,25 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 	  if ( !network.shutdown_in_progress() ) {
 	    network.set_current_state( terminal );
 	  }
-	  
+	  #if defined(HAVE_SYSLOG) || defined(HAVE_UTEMPTER)
 	  #ifdef HAVE_UTEMPTER
-	  /* update utmp entry if we have become "connected" */
-	  if ( (!connected_utmp)
+	  if (!connected_utmp) {
+	    force_connection_change_evt = true;
+	  } else {
+	    force_connection_change_evt = false;
+	  }
+	  #else
+	  force_connection_change_evt = false;
+	  #endif
+
+	  /**
+	   * - HAVE_UTEMPTER - update utmp entry if we have become "connected"
+	   * - HAVE_SYSLOG - log connection information to syslog
+	   **/
+	  if ( (force_connection_change_evt)
 	       || saved_addr_len != network.get_remote_addr_len()
 	       || memcmp( &saved_addr, &network.get_remote_addr(),
 			  saved_addr_len ) != 0 ) {
-	    utempter_remove_record( host_fd );
 
 	    saved_addr = network.get_remote_addr();
 	    saved_addr_len = network.get_remote_addr_len();
@@ -764,19 +802,25 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 	      throw NetworkException( std::string( "serve: getnameinfo: " ) + gai_strerror( errcode ), 0 );
 	    }
 
-	    char tmp[ 64 ];
-	    snprintf( tmp, 64, "%s via mosh [%d]", host, getpid() );
+	    #ifdef HAVE_UTEMPTER
+	    utempter_remove_record( host_fd );
+	    char tmp[ 64 + NI_MAXHOST ];
+	    snprintf( tmp, 64 + NI_MAXHOST, "%s via mosh [%d]", host, getpid() );
 	    utempter_add_record( host_fd, tmp );
 
 	    connected_utmp = true;
+	    #endif
+
+	    #ifdef HAVE_SYSLOG
+	    syslog(LOG_INFO, "user %s connected from host: %s", pw->pw_name, host);
+	    #endif
 	  }
 	  #endif
 
 	  /* Tell child to start login session. */
 	  if ( !child_released ) {
 	    if ( swrite( host_fd, "\n", 1 ) < 0) {
-	      perror( "child release" );
-	      _exit( 1 );
+	      err( 1, "child release" );
 	    }
 	    child_released = true;
 	  }
@@ -815,12 +859,11 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 	fprintf( stderr, "Network idle for %llu seconds.\n", 
 		 static_cast<unsigned long long>( time_since_remote_state / 1000 ) );
       }
-      if ( sel.signal( SIGUSR1 ) ) {
-	if ( !network_signaled_timeout_ms || network_signaled_timeout_ms <= time_since_remote_state ) {
-	  idle_shutdown = true;
-	  fprintf( stderr, "Network idle for %llu seconds when SIGUSR1 received\n",
-		   static_cast<unsigned long long>( time_since_remote_state / 1000 ) );
-	}
+      if ( sel.signal( SIGUSR1 )
+	   && ( !network_signaled_timeout_ms || network_signaled_timeout_ms <= time_since_remote_state ) ) {
+	idle_shutdown = true;
+	fprintf( stderr, "Network idle for %llu seconds when SIGUSR1 received\n",
+		 static_cast<unsigned long long>( time_since_remote_state / 1000 ) );
       }
 
       if ( sel.any_signal() || idle_shutdown ) {
@@ -849,24 +892,21 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
 
       #ifdef HAVE_UTEMPTER
       /* update utmp if has been more than 30 seconds since heard from client */
-      if ( connected_utmp ) {
-	if ( time_since_remote_state > 30000 ) {
-	  utempter_remove_record( host_fd );
+      if ( connected_utmp 
+	   && time_since_remote_state > 30000 ) {
+	utempter_remove_record( host_fd );
 
-	  char tmp[ 64 ];
-	  snprintf( tmp, 64, "mosh [%d]", getpid() );
-	  utempter_add_record( host_fd, tmp );
+	char tmp[ 64 ];
+	snprintf( tmp, 64, "mosh [%d]", getpid() );
+	utempter_add_record( host_fd, tmp );
 
-	  connected_utmp = false;
-	}
+	connected_utmp = false;
       }
       #endif
 
-      if ( terminal.set_echo_ack( now ) ) {
+      if ( terminal.set_echo_ack( now ) && !network.shutdown_in_progress() ) {
 	/* update client with new echo ack */
-	if ( !network.shutdown_in_progress() ) {
-	  network.set_current_state( terminal );
-	}
+	network.set_current_state( terminal );
       }
 
       if ( !network.get_remote_state_num()
@@ -888,6 +928,9 @@ static void serve( int host_fd, Terminal::Complete &terminal, ServerConnection &
       }
     }
   }
+  #ifdef HAVE_SYSLOG
+  syslog(LOG_INFO, "user %s session end", pw->pw_name);
+  #endif
 }
 
 /* Print the motd from a given file, if available */
@@ -941,15 +984,17 @@ static bool motd_hushed( void )
 {
   /* must be in home directory already */
   struct stat buf;
-  return (0 == lstat( ".hushlogin", &buf ));
+  return 0 == lstat( ".hushlogin", &buf );
 }
 
+#ifdef HAVE_UTMPX_H
 static bool device_exists( const char *ut_line )
 {
   string device_name = string( "/dev/" ) + string( ut_line );
   struct stat buf;
-  return (0 == lstat( device_name.c_str(), &buf ));
+  return 0 == lstat( device_name.c_str(), &buf );
 }
+#endif
 
 static void warn_unattached( const string & ignore_entry )
 {

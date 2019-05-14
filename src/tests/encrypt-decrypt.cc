@@ -58,11 +58,10 @@ bool verbose = false;
 
 static std::string random_payload( void ) {
   const size_t len = prng.uint32() % MESSAGE_SIZE_MAX;
-  char *buf = new char[len];
+  char buf[ MESSAGE_SIZE_MAX ];
   prng.fill( buf, len );
 
   std::string payload( buf, len );
-  delete [] buf;
   return payload;
 }
 
@@ -145,7 +144,7 @@ int main( int argc, char *argv[] ) {
     } catch ( const CryptoException &e ) {
       fprintf( stderr, "Crypto exception: %s\r\n",
                e.what() );
-      fatal_assert( false );
+      return 1;
     }
   }
 

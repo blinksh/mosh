@@ -44,8 +44,9 @@ use POSIX qw(_exit);
 BEGIN {
   my @gai_reqs = qw( getaddrinfo getnameinfo AI_CANONNAME AI_NUMERICHOST NI_NUMERICHOST );
   eval { Socket->import( @gai_reqs ); 1; }
-    || eval { require Socket::GetAddrInfo; Socket::GetAddrInfo->import( ':newapi', @gai_reqs ); 1; }
-    || eval { Socket::GetAddrInfo->import( '0.22', @gai_reqs ); 1; }
+    || (eval { require Socket::GetAddrInfo; 1; }
+        && (eval { Socket::GetAddrInfo->import( ':newapi', @gai_reqs ); 1; }
+            || eval { Socket::GetAddrInfo->import( '0.22', @gai_reqs ); 1; }))
     || die "$0 error: requires Perl 5.14 or Socket::GetAddrInfo.\n";
 }
 
@@ -64,6 +65,8 @@ my $client = 'mosh-client';
 my $server = 'mosh-server';
 
 my $predict = undef;
+
+my $overwrite = 0;
 
 my $bind_ip = undef;
 
@@ -96,6 +99,8 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
 -a      --predict=always        use local echo even on fast links
 -n      --predict=never         never use local echo
         --predict=experimental  aggressively echo even when incorrect
+
+-o      --predict-overwrite     prediction overwrites instead of inserting
 
 -4      --family=inet        use IPv4 only
 -6      --family=inet6       use IPv6 only
@@ -150,6 +155,7 @@ sub predict_check {
 GetOptions( 'client=s' => \$client,
 	    'server=s' => \$server,
 	    'predict=s' => \$predict,
+	    'predict-overwrite|o!' => \$overwrite,
 	    'port=s' => \$port_request,
 	    'a' => sub { $predict = 'always' },
 	    'n' => sub { $predict = 'never' },
@@ -199,6 +205,9 @@ if (!$have_ipv6) {
   }
   # Force IPv4.
   $family = "inet";
+}
+if ( $overwrite ) {
+    $ENV{ "MOSH_PREDICTION_OVERWRITE" } = "yes";
 }
 
 if ( defined $port_request ) {
@@ -387,7 +396,7 @@ if ( $pid == 0 ) { # child
     delete $ENV{ 'SSH_CONNECTION' };
     chdir; # $HOME
     print "MOSH IP ${userhost}\n";
-    exec( $server, @server );
+    exec( "$server " . shell_quote( @server ) );
     die "Cannot exec $server: $!\n";
   }
   if ( $use_remote_ip eq 'proxy' ) {

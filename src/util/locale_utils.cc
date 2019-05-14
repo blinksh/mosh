@@ -45,15 +45,13 @@
 
 #include "locale_utils.h"
 
-using namespace std;
 
-const string LocaleVar::str( void ) const
+const std::string LocaleVar::str( void ) const
 {
   if ( name.empty() ) {
-    return string( "[no charset variables]" );
-  } else {
-    return name + "=" + value;
+    return std::string( "[no charset variables]" );
   }
+  return name + "=" + value;
 }
 
 const LocaleVar get_ctype( void )
@@ -65,9 +63,8 @@ const LocaleVar get_ctype( void )
     return LocaleVar( "LC_CTYPE", ctype );
   } else if ( const char *lang = getenv( "LANG" ) ) {
     return LocaleVar( "LANG", lang );
-  } else {
-    return LocaleVar( "", "" );
   }
+  return LocaleVar( "", "" );
 }
 
 const char *locale_charset( void )

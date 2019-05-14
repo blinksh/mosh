@@ -49,17 +49,17 @@
 namespace Terminal {
   using shared::shared_ptr;
   using shared::make_shared;
-  typedef uint16_t color_type;
+  typedef uint32_t color_type;
 
   class Renditions {
   public:
     typedef enum { bold, faint, italic, underlined, blink, inverse, invisible, SIZE } attribute_type;
 
-    // all together, a 32 bit word now...
-    unsigned int foreground_color : 12;
-    unsigned int background_color : 12;
   private:
-    unsigned int attributes : 8;
+    static const uint64_t true_color_mask = 0x1000000;
+    uint64_t foreground_color : 25;
+    uint64_t background_color : 25;
+    uint64_t attributes : 8;
 
   public:
     Renditions( color_type s_background );
@@ -67,6 +67,17 @@ namespace Terminal {
     void set_background_color( int num );
     void set_rendition( color_type num );
     std::string sgr( void ) const;
+
+    static unsigned int make_true_color( unsigned int r, unsigned int g, unsigned int b ) {
+      return true_color_mask | (r << 16) | (g << 8) | b;
+    }
+
+    static bool is_true_color(unsigned int color) {
+      return (color & true_color_mask) != 0;
+    }
+
+    // unsigned int get_foreground_rendition() const { return foreground_color; }
+    unsigned int get_background_rendition() const { return background_color; }
 
     bool operator==( const Renditions &x ) const
     {
@@ -93,9 +104,10 @@ namespace Terminal {
     unsigned int fallback : 1; /* first character is combining character */
     unsigned int wrap : 1;
 
+  private:
+    Cell();
   public:
     Cell( color_type background_color );
-    Cell(); /* default constructor required by C++11 STL */
 
     void reset( color_type background_color );
 
@@ -208,8 +220,10 @@ namespace Terminal {
     // in scrolling.
     uint64_t gen;
 
+  private:
+    Row();
+  public:
     Row( const size_t s_width, const color_type background_color );
-    Row(); /* default constructor required by C++11 STL */
 
     void insert_cell( int col, color_type background_color );
     void delete_cell( int col, color_type background_color );
@@ -321,7 +335,7 @@ namespace Terminal {
     void add_rendition( color_type x ) { renditions.set_rendition( x ); }
     const Renditions& get_renditions( void ) const { return renditions; }
     Renditions& get_renditions( void ) { return renditions; }
-    int get_background_rendition( void ) const { return renditions.background_color; }
+    int get_background_rendition( void ) const { return renditions.get_background_rendition(); }
 
     void save_cursor( void );
     void restore_cursor( void );
@@ -365,6 +379,7 @@ namespace Terminal {
     rows_type rows;
     title_type icon_name;
     title_type window_title;
+    title_type clipboard;
     unsigned int bell_count;
     bool title_initialized; /* true if the window title has been set via an OSC */
 
@@ -437,8 +452,10 @@ namespace Terminal {
     bool is_title_initialized( void ) const { return title_initialized; }
     void set_icon_name( const title_type &s ) { icon_name = s; }
     void set_window_title( const title_type &s ) { window_title = s; }
+    void set_clipboard( const title_type &s ) { clipboard = s; }
     const title_type & get_icon_name( void ) const { return icon_name; }
     const title_type & get_window_title( void ) const { return window_title; }
+    const title_type & get_clipboard( void ) const { return clipboard; }
 
     void prefix_window_title( const title_type &s );
 
@@ -452,7 +469,7 @@ namespace Terminal {
 
     bool operator==( const Framebuffer &x ) const
     {
-      return ( rows == x.rows ) && ( window_title == x.window_title ) && ( bell_count == x.bell_count ) && ( ds == x.ds );
+      return ( rows == x.rows ) && ( window_title == x.window_title ) && ( clipboard  == x.clipboard ) && ( bell_count == x.bell_count ) && ( ds == x.ds );
     }
   };
 }

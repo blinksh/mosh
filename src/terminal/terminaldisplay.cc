@@ -68,13 +68,13 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
   if ( f.get_bell_count() != frame.last_frame.get_bell_count() ) {
     frame.append( '\007' );
   }
+  typedef Terminal::Framebuffer::title_type title_type;
 
   /* has icon name or window title changed? */
   if ( has_title && f.is_title_initialized() &&
        ( (!initialized)
          || (f.get_icon_name() != frame.last_frame.get_icon_name())
          || (f.get_window_title() != frame.last_frame.get_window_title()) ) ) {
-    typedef Terminal::Framebuffer::title_type title_type;
       /* set icon name and window title */
     if ( f.get_icon_name() == f.get_window_title() ) {
       /* write combined Icon Name and Window Title */
@@ -108,6 +108,18 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
       frame.append( '\007' );
     }
 
+  }
+
+  /* has clipboard changed? */
+  if (f.get_clipboard() != frame.last_frame.get_clipboard()) {
+    frame.append( "\033]52;c;" );
+    const title_type &clipboard( f.get_clipboard() );
+    for ( title_type::const_iterator i = clipboard.begin();
+          i != clipboard.end();
+          i++ ) {
+      frame.append( *i );
+    }
+    frame.append( '\007' );
   }
 
   /* has reverse video state changed? */
@@ -169,29 +181,30 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
     for ( int row = 0; row < f.ds.get_height(); row++ ) {
       const Row *new_row = f.get_row( 0 );
       const Row *old_row = &*rows.at( row );
-      if ( new_row == old_row || *new_row == *old_row ) {
-	/* if row 0, we're looking at ourselves and probably didn't scroll */
-	if ( row == 0 ) {
-	  break;
-	}
-	/* found a scroll */
-	lines_scrolled = row;
-	scroll_height = 1;
-
-	/* how big is the region that was scrolled? */
-	for ( int region_height = 1;
-	      lines_scrolled + region_height < f.ds.get_height();
-	      region_height++ ) {
-	  if ( *f.get_row( region_height )
-	       == *rows.at( lines_scrolled + region_height ) ) {
-	    scroll_height = region_height + 1;
-	  } else {
-	    break;
-	  }
-	}
-
+      if ( ! ( new_row == old_row || *new_row == *old_row ) ) {
+	continue;
+      }
+      /* if row 0, we're looking at ourselves and probably didn't scroll */
+      if ( row == 0 ) {
 	break;
       }
+      /* found a scroll */
+      lines_scrolled = row;
+      scroll_height = 1;
+
+      /* how big is the region that was scrolled? */
+      for ( int region_height = 1;
+	    lines_scrolled + region_height < f.ds.get_height();
+	    region_height++ ) {
+	if ( *f.get_row( region_height )
+	     == *rows.at( lines_scrolled + region_height ) ) {
+	  scroll_height = region_height + 1;
+	} else {
+	  break;
+	}
+      }
+
+      break;
     }
 
     if ( scroll_height ) {
@@ -214,7 +227,8 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
 	/* Common case:  if we're already on the bottom line and we're scrolling the whole
 	 * screen, just do a CR and LFs.
 	 */
-	if ( (scroll_height + lines_scrolled == f.ds.get_height() ) && frame.cursor_y + 1 == f.ds.get_height() ) {
+	if ( scroll_height + lines_scrolled == f.ds.get_height()
+	     && frame.cursor_y + 1 == f.ds.get_height() ) {
 	  frame.append( '\r' );
 	  frame.append( lines_scrolled, '\n' );
 	  frame.cursor_x = 0;
@@ -446,23 +460,23 @@ bool Display::put_row( bool initialized, FrameState &frame, const Framebuffer &f
     }
   }
 
-  if ( wrote_last_cell
-       && (frame_y < f.ds.get_height() - 1) ) {
-    /* To hint that a word-select should group the end of one line
-       with the beginning of the next, we let the real cursor
-       actually wrap around in cases where it wrapped around for us. */
-    if ( wrap_this ) {
-      /* Update our cursor, and ask for wrap on the next row. */
-      frame.cursor_x = 0;
-      frame.cursor_y++;
-      return true;
-    } else {
-      /* Resort to CR/LF and update our cursor. */
-      frame.append( "\r\n" );
-      frame.cursor_x = 0;
-      frame.cursor_y++;
-    }
+  if ( ! ( wrote_last_cell
+	   && (frame_y < f.ds.get_height() - 1) ) ) {
+    return false;
   }
+  /* To hint that a word-select should group the end of one line
+     with the beginning of the next, we let the real cursor
+     actually wrap around in cases where it wrapped around for us. */
+  if ( wrap_this ) {
+    /* Update our cursor, and ask for wrap on the next row. */
+    frame.cursor_x = 0;
+    frame.cursor_y++;
+    return true;
+  }
+  /* Resort to CR/LF and update our cursor. */
+  frame.append( "\r\n" );
+  frame.cursor_x = 0;
+  frame.cursor_y++;
   return false;
 }
 
