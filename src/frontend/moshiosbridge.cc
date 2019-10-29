@@ -11,7 +11,7 @@ int mosh_main(
     const char *encoded_state_buffer, size_t encoded_state_size
               )
 {
-  fwrite("Hello from the Bridge!\n", 22, 1, f_out);
+  //fwrite("Hello from the Bridge!\n", 22, 1, f_out);
   /* Adopt native locale */
   set_native_locale();
 
