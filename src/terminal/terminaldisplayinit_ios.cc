@@ -66,7 +66,8 @@ using namespace Terminal;
 //#if !defined IOS_CONTROLLER
 
 Display::Display( bool use_environment )
-  : has_ech( true ), has_bce( true ), has_title( true ), smcup( NULL ), rmcup( NULL )
+  : has_ech( true ), has_bce( true ), has_title( true ), smcup( "\033[?1049h" ), rmcup( "\033[?1049l" )
 {
+  
 }
 //#endif

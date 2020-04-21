@@ -123,6 +123,7 @@ void iOSClient::init( void )
 
 //   /* Put terminal in application-cursor-key mode */
 //   swrite( out_fd, display.open().c_str() );
+  fprintf( out_fd, "%s", display.open().c_str() );
 
   // TODO: Send signal to set window Title
   // /* Add our name to window title */
@@ -212,6 +213,7 @@ void iOSClient::shutdown( void )
 
   /* Restore terminal and terminal-driver state */
   //swrite( out_fd, display.close().c_str() );
+  fprintf( out_fd, "%s", display.close().c_str() );
   
   // if ( tcsetattr( in_fd, TCSANOW, &saved_termios ) < 0 ) {
   //   perror( "tcsetattr" );
