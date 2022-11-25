@@ -330,7 +330,7 @@ void iOSClient::process_network_input( void )
   overlays.get_prediction_engine().set_local_frame_late_acked( network->get_latest_remote_state().state.get_echo_ack() );
 }
 
-int ret1 = 0;
+__thread int ret1 = 0;
 
 bool iOSClient::process_user_input( int fd )
 {
@@ -525,7 +525,7 @@ bool iOSClient::main( const string encoded_state )
 
       /* Handle startup "Connecting..." message */
       if ( still_connecting() ) {
-	wait_time = std::min( 250, wait_time );
+	      wait_time = std::min( 250, wait_time );
       }
 
       /* poll for events */
@@ -533,53 +533,50 @@ bool iOSClient::main( const string encoded_state )
       sel.clear_fds();
       std::vector< int > fd_list( network->fds() );
       for ( std::vector< int >::const_iterator it = fd_list.begin();
-	    it != fd_list.end();
-	    it++ ) {
-	sel.add_fd( *it );
+	          it != fd_list.end();
+	          it++ ) {
+	      sel.add_fd( *it );
       }
       sel.add_fd( STDIN_FILENO );
 
       int active_fds = sel.select( wait_time );
       if ( active_fds < 0 ) {
-	perror( "select" );
-	break;
+	      perror( "select" );
+	      break;
       }
 
       bool network_ready_to_read = false;
 
       for ( std::vector< int >::const_iterator it = fd_list.begin();
-	    it != fd_list.end();
-	    it++ ) {
-	if ( sel.read( *it ) ) {
-	  /* packet received from the network */
-	  /* we only read one socket each run */
-	  network_ready_to_read = true;
-	}
+	          it != fd_list.end();
+	          it++ ) {
+	      if ( sel.read( *it ) ) {
+	        /* packet received from the network */
+	        /* we only read one socket each run */
+	        network_ready_to_read = true;
+	      }
       }
 
       if ( network_ready_to_read ) {
-	process_network_input();
+	      process_network_input();
       }
     
-      if ( sel.read( STDIN_FILENO ) ) {
-	/* input from the user needs to be fed to the network */
-	if ( !process_user_input( STDIN_FILENO ) ) {
-	  if ( !network->has_remote_addr() ) {
-	    break;
-	  } else if ( !network->shutdown_in_progress() ) {
-	    overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
-	    network->start_shutdown();
-	  }
-	}
+      if ( sel.read( STDIN_FILENO ) && !process_user_input( STDIN_FILENO ) )  {
+/* input from the user needs to be fed to the network */      	
+    	  if ( !network->has_remote_addr() ) {
+    	    break;
+    	  } else if ( !network->shutdown_in_progress() ) {
+    	    overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
+    	    network->start_shutdown();
+    	  }
       }
 
-      if ( sel.signal( SIGWINCH ) ) {
-        /* resize */
-        if ( !process_resize() ) { return false; }
+      if ( sel.signal( SIGWINCH ) && !process_resize()) { /* resize */
+        return false;
       }
 
       if ( sel.signal( SIGCONT ) ) {
-	resume();
+	      resume();
       }
 
       if ( sel.signal( SIGTERM )
@@ -591,7 +588,7 @@ bool iOSClient::main( const string encoded_state )
           break;
         } else if ( !network->shutdown_in_progress() ) {
           overlays.get_notification_engine().set_notification_string( wstring( L"Signal received, shutting down..." ), true );
-            network->start_shutdown();
+          network->start_shutdown();
         }
       }
 
@@ -644,37 +641,37 @@ bool iOSClient::main( const string encoded_state )
 
       /* quit if our shutdown has been acknowledged */
       if ( network->shutdown_in_progress() && network->shutdown_acknowledged() ) {
-	clean_shutdown = true;
-	break;
+	      clean_shutdown = true;
+	      break;
       }
 
       /* quit after shutdown acknowledgement timeout */
       if ( network->shutdown_in_progress() && network->shutdown_ack_timed_out() ) {
-	break;
+	      break;
       }
 
       /* quit if we received and acknowledged a shutdown request */
       if ( network->counterparty_shutdown_ack_sent() ) {
-	clean_shutdown = true;
-	break;
+	      clean_shutdown = true;
+	      break;
       }
 
       /* write diagnostic message if can't reach server */
       if ( still_connecting()
-	   && (!network->shutdown_in_progress())
-	   && (timestamp() - network->get_latest_remote_state().timestamp > 250) ) {
-	if ( timestamp() - network->get_latest_remote_state().timestamp > 15000 ) {
-	  if ( !network->shutdown_in_progress() ) {
-	    overlays.get_notification_engine().set_notification_string( wstring( L"Timed out waiting for server..." ), true );
-	    network->start_shutdown();
-	  }
-	} else {
-	  overlays.get_notification_engine().set_notification_string( connecting_notification );
-	}
+	         && (!network->shutdown_in_progress())
+	         && (timestamp() - network->get_latest_remote_state().timestamp > 250) ) {
+	      if ( timestamp() - network->get_latest_remote_state().timestamp > 15000 ) {
+	        if ( !network->shutdown_in_progress() ) {
+	          overlays.get_notification_engine().set_notification_string( wstring( L"Timed out waiting for server..." ), true );
+	          network->start_shutdown();
+	        }
+	      } else {
+	        overlays.get_notification_engine().set_notification_string( connecting_notification );
+	      }
       } else if ( (network->get_remote_state_num() != 0)
-		  && (overlays.get_notification_engine().get_notification_string()
-		      == connecting_notification) ) {
-	overlays.get_notification_engine().set_notification_string( L"" );
+		              && (overlays.get_notification_engine().get_notification_string()
+		                  == connecting_notification) ) {
+	      overlays.get_notification_engine().set_notification_string( L"" );
       }
 
       network->tick();
@@ -682,7 +679,7 @@ bool iOSClient::main( const string encoded_state )
       string & send_error = network->get_send_error();
       if ( !send_error.empty() ) {
         overlays.get_notification_engine().set_network_error( send_error );
-	send_error.clear();
+	      send_error.clear();
       } else {
         overlays.get_notification_engine().clear_network_error();
       }
