@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/mobile-shell/mosh.svg?branch=master)](https://travis-ci.org/mobile-shell/mosh)
+[![ci](https://github.com/mobile-shell/mosh/actions/workflows/ci.yml/badge.svg)](https://github.com/mobile-shell/mosh/actions/workflows/ci.yml)
 
 Mosh: the mobile shell
 ======================
@@ -144,6 +144,22 @@ Mosh has a Perl dependency that is only required for client use.  For
 some platforms, it may make sense to have separate mosh-server and
 mosh-client packages to allow mosh-server usage without Perl.
 
+Notes for developers
+--------------------
+
+Mosh supports producing code coverage reports by tests, but this feature is
+disabled by default. To enable it, make sure `lcov` is installed on your
+system. Then, configure and run tests:
+
+```
+$ ./configure --enable-code-coverage
+$ make check-code-coverage
+```
+
+This will run all tests and produce a coverage report in HTML form that can be
+opened with your favorite browser. Ideally, newly added code should strive for
+90% (or better) incremental test coverage.
+
 More info
 ---------
 
@@ -159,6 +175,6 @@ More info
 
     <https://mailman.mit.edu/mailman/listinfo/mosh-users>
 
-  * `#mosh` channel on [Freenode IRC](https://freenode.net/)
+  * `#mosh` channel on [Libera Chat](https://libera.chat/)
 
-    https://webchat.freenode.net/?channels=mosh
+    https://web.libera.chat/#mosh

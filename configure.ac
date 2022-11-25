@@ -2,12 +2,14 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.61])
-AC_INIT([mosh], [1.3.2], [mosh-devel@mit.edu])
-AM_INIT_AUTOMAKE([foreign std-options -Wall -Werror])
+AC_INIT([mosh], [1.4.0], [mosh-devel@mit.edu])
+AM_INIT_AUTOMAKE([foreign std-options -Wall -Werror -Wno-portability])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AC_CONFIG_SRCDIR([src/frontend/mosh-client.cc])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_HEADERS([src/include/config.h])
+AC_LANG([C++])
+AX_CODE_COVERAGE
 
 # Checks for programs.
 AC_PROG_CC([cc gcc clang])
@@ -20,8 +22,9 @@ AS_IF([test x"$PROTOC" = x],
 # automake 1.12 seems to require this, but automake 1.11 doesn't recognize it
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 
+# Protobuf 3.6+ requires C++11.
 AS_IF([pkg-config --atleast-version 3.6.0 protobuf],
-  [AX_CXX_COMPILE_STDCXX([11], [noext])])
+  [AX_CXX_COMPILE_STDCXX([11])])
 
 WARNING_CXXFLAGS=""
 PICKY_CXXFLAGS=""
@@ -40,20 +43,24 @@ AC_ARG_ENABLE([compile-warnings],
        PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations"
        ;;
      error)
-       WARNING_CXXFLAGS="-Wall -Werror"
-       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations"
+       # remove -Wno-c++17-extensions once protocolbuffers/protobuf#9181 is
+       # resolved
+       # remove -Wno-unused-parameter once
+       # protocolbuffers/protobuf#10357 is resolved       
+       WARNING_CXXFLAGS="-Wall -Werror -Wno-c++17-extensions"
+       PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations -Wno-unused-parameter"
        ;;
      distcheck)
        WARNING_CXXFLAGS="-Wall -Werror"
        PICKY_CXXFLAGS="-Wextra -pedantic -Wno-long-long -Weffc++ -Wmissing-declarations"
-       AC_LANG_PUSH(C++)
        AX_CHECK_COMPILE_FLAG([-Wno-error=unused-parameter],
          [PICKY_CXXFLAGS="$PICKY_CXXFLAGS -Wno-error=unused-parameter"], [], [-Werror])
        AX_CHECK_COMPILE_FLAG([-Wno-error=c++11-extensions],
          [PICKY_CXXFLAGS="$PICKY_CXXFLAGS -Wno-error=c++11-extensions"], [], [-Werror])
        AX_CHECK_COMPILE_FLAG([-Wno-error=deprecated-declarations],
          [PICKY_CXXFLAGS="$PICKY_CXXFLAGS -Wno-error=deprecated-declarations"], [], [-Werror])
-       AC_LANG_POP(C++)
+       AX_CHECK_COMPILE_FLAG([-Wno-error=nested-anon-types],
+         [PICKY_CXXFLAGS="$PICKY_CXXFLAGS -Wno-error=nested-anon-types"], [], [-Werror])
        ;;
      *)
        AC_MSG_ERROR([Unknown argument '$enableval' to --enable-compile-warnings])
@@ -63,30 +70,57 @@ AC_ARG_ENABLE([compile-warnings],
 AC_SUBST([WARNING_CXXFLAGS])
 AC_SUBST([PICKY_CXXFLAGS])
 
+# Check for fuzzing support before the flag wrapper, because if
+# requested and missing the functionality is entirely nonexistent.
+MISC_CXXFLAGS=""
+AC_ARG_ENABLE([fuzzing],
+  [AS_HELP_STRING([--enable-fuzzing],
+    [Enable compiler and linker options to enable fuzz testing @<:@no/yes/libfuzzer@:>@])],
+  [fuzzing="$enableval"
+   case "$enableval" in
+    no)
+      ;;
+    '' | yes | libfuzzer)
+      AX_CHECK_COMPILE_FLAG([-fsanitize=fuzzer],
+        [FUZZING_CFLAGS="$FUZZING_CFLAGS -fsanitize=fuzzer"], [
+        AC_MSG_ERROR([Fuzzing requested, but compiler support not present])], [-Werror])
+      ;;
+    *)
+     AC_MSG_ERROR(["Unknown argument '$enableval' to --enable-fuzzing])
+     ;;
+  esac],
+  [fuzzing="no"])
+AC_SUBST([FUZZING_CFLAGS])
+AC_SUBST([MISC_CXXFLAGS])
+AM_CONDITIONAL([ENABLE_FUZZING], [test x"$fuzzing" != xno])
+
+AC_ARG_ENABLE([asan],
+  [AS_HELP_STRING([--enable-asan],
+    [Enable compiler and linker options to enable AddressSanitizer @<:@no@:>@])],
+  [asan="$enableval"],
+  [asan="no"])
+
+AS_IF([test x"$asan" != x"no"], [
+  AX_CHECK_COMPILE_FLAG([-fsanitize=address,leak],
+  [MISC_CXXFLAGS="$MISC_CXXFLAGS -fsanitize=address,leak"], [
+  AC_MSG_ERROR([ASAN requested, but compiler support not present])], [-Werror])
+])
+AC_SUBST([MISC_CXXFLAGS])
+
 # We want to check for compiler flag support, but there is no way to make
 # clang's "argument unused" warning fatal.  So we invoke the compiler through a
 # wrapper script that greps for this message.
 
-saved_CC="$CC"
 saved_CXX="$CXX"
 saved_LD="$LD"
 flag_wrap="$srcdir/scripts/wrap-compiler-for-flag-check"
-CC="$flag_wrap $CC"
 CXX="$flag_wrap $CXX"
 LD="$flag_wrap $LD"
 
-# We use the same hardening flags for C and C++.  We must check that each flag
-# is supported by both compilers.
-AC_DEFUN([check_cc_cxx_flag],
- [AC_LANG_PUSH(C)
-  AX_CHECK_COMPILE_FLAG([$1],
-   [AC_LANG_PUSH(C++)
-    AX_CHECK_COMPILE_FLAG([$1], [$2], [$3], [-Werror $4])
-    AC_LANG_POP(C++)],
-   [$3], [-Werror $4])
-  AC_LANG_POP(C)])
+AC_DEFUN([check_cxx_flag],
+  [AX_CHECK_COMPILE_FLAG([$1], [$2], [$3], [-Werror $4])])
 AC_DEFUN([check_link_flag],
- [AX_CHECK_LINK_FLAG([$1], [$2], [$3], [-Werror $4])])
+  [AX_CHECK_LINK_FLAG([$1], [$2], [$3], [-Werror $4])])
 
 AC_ARG_ENABLE([hardening],
   [AS_HELP_STRING([--enable-hardening],
@@ -97,19 +131,19 @@ AC_ARG_ENABLE([hardening],
 HARDEN_CFLAGS=""
 HARDEN_LDFLAGS=""
 AS_IF([test x"$hardening" != x"no"], [
-  check_cc_cxx_flag([-fno-strict-overflow], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow"])
+  check_cxx_flag([-fno-strict-overflow], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow"])
 
   # This one will likely succeed, even on platforms where it does nothing.
-  check_cc_cxx_flag([-D_FORTIFY_SOURCE=2], [HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"])
+  check_cxx_flag([-D_FORTIFY_SOURCE=2], [HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"])
 
   check_link_flag([-fstack-protector-all],
    [HARDEN_CFLAGS="$HARDEN_CFLAGS -fstack-protector-all"
-    check_cc_cxx_flag([-Wstack-protector], [HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"],
+    check_cxx_flag([-Wstack-protector], [HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"],
       [], [-fstack-protector-all])
-    check_cc_cxx_flag([--param ssp-buffer-size=1], [HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"],
+    check_cxx_flag([--param ssp-buffer-size=1], [HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"],
       [], [-fstack-protector-all])])
 
-  check_cc_cxx_flag([-fPIE],
+  check_cxx_flag([-fPIE],
    [check_link_flag([-fPIE -pie],
      [HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
       HARDEN_LDFLAGS="$HARDEN_LDFLAGS -pie"],
@@ -124,17 +158,13 @@ AC_SUBST([HARDEN_CFLAGS])
 AC_SUBST([HARDEN_LDFLAGS])
 
 # Also check for a few non-hardening-related flags.
-MISC_CXXFLAGS=""
-AC_LANG_PUSH(C++)
 AX_CHECK_COMPILE_FLAG([-fno-default-inline],
   [MISC_CXXFLAGS="$MISC_CXXFLAGS -fno-default-inline"], [], [-Werror])
 AX_CHECK_COMPILE_FLAG([-pipe],
   [MISC_CXXFLAGS="$MISC_CXXFLAGS -pipe"], [], [-Werror])
-AC_LANG_POP(C++)
 AC_SUBST([MISC_CXXFLAGS])
 
 # End of flag tests.
-CC="$saved_CC"
 CXX="$saved_CXX"
 LD="$saved_LD"
 
@@ -175,18 +205,6 @@ AC_ARG_ENABLE([completion],
   [install_completion="no"])
 AM_CONDITIONAL([INSTALL_COMPLETION], [test x"$install_completion" != xno])
 
-# Checks for libraries.
-AC_ARG_WITH([utempter],
-  [AS_HELP_STRING([--with-utempter], [write utmp entries using libutempter @<:@check@:>@])],
-  [with_utempter="$withval"],
-  [with_utempter="check"])
-AS_IF([test x"$with_utempter" != xno],
-  [AC_SEARCH_LIBS([utempter_remove_record], [utempter],
-    [AC_DEFINE([HAVE_UTEMPTER], [1], [Define if libutempter is available.])],
-    [AS_IF([test x"$with_utempter" = xcheck],
-      [AC_MSG_WARN([Unable to find libutempter; utmp entries will not be made.])],
-      [AC_MSG_ERROR([--with-utempter was given but libutempter was not found.])])])])
-
 AC_ARG_ENABLE([syslog],
   [AS_HELP_STRING([--enable-syslog], [Enable connection logging in mosh-server @<:@no@:>@])],
   [enable_syslog="$enableval"],
@@ -198,7 +216,49 @@ AS_IF([test x"$enable_syslog" != xno],
       [AC_MSG_WARN([Unable to find syslog.h.])],
       [AC_MSG_ERROR([--enable-syslog was given but syslog.h was not found.])])])])
 
-AC_SEARCH_LIBS([compress], [z], , [AC_MSG_ERROR([Unable to find zlib.])])
+# Checks for libraries.
+AC_ARG_ENABLE([static-libraries],
+  [AS_HELP_STRING([--enable-static-libraries], [Enable all static linking options below @<:@no@:>@])])
+
+AC_ARG_ENABLE([static-libstdc++],
+  [AS_HELP_STRING([--enable-static-libstdc++], [Link libstdc++ statically @<:@no@:>@])],
+  [], [enable_static_libstdc__="$enable_static_libraries"])
+AS_IF([test "$enable_static_libstdc__" = yes],
+  [LDFLAGS="$LDFLAGS -static-libstdc++"])
+
+AC_ARG_ENABLE([static-libgcc],
+  [AS_HELP_STRING([--enable-static-libgcc], [Link libgcc statically @<:@no@:>@])],
+  [], [enable_static_libgcc="$enable_static_libraries"])
+AS_IF([test "$enable_static_libgcc" = yes],
+  [LDFLAGS="$LDFLAGS -static-libgcc"])
+
+AC_ARG_WITH([utempter],
+  [AS_HELP_STRING([--with-utempter], [write utmp entries using libutempter @<:@check@:>@])],
+  [with_utempter="$withval"],
+  [with_utempter="check"])
+AC_ARG_ENABLE([static-utempter],
+  [AS_HELP_STRING([--enable-static-utempter], [Link utempter statically @<:@no@:>@])],
+  [], [enable_static_utempter="$enable_static_libraries"])
+AS_IF([test x"$with_utempter" != xno],
+  [AC_CHECK_LIB([utempter], [utempter_remove_record],
+    [UTEMPTER_LIBS=-lutempter
+     AS_IF([test "$enable_static_utempter" = yes],
+       [UTEMPTER_LIBS="-Wl,-Bstatic $UTEMPTER_LIBS -Wl,-Bdynamic"])
+     LIBS="$UTEMPTER_LIBS $LIBS"
+     AC_DEFINE([HAVE_UTEMPTER], [1], [Define if libutempter is available.])],
+    [AS_IF([test x"$with_utempter" = xcheck],
+      [AC_MSG_WARN([Unable to find libutempter; utmp entries will not be made.])],
+      [AC_MSG_ERROR([--with-utempter was given but libutempter was not found.])])])])
+
+AC_ARG_ENABLE([static-zlib],
+  [AS_HELP_STRING([--enable-static-zlib], [Link zlib statically @<:@no@:>@])],
+  [], [enable_static_zlib="$enable_static_libraries"])
+AC_CHECK_LIB([z], [compress],
+  [ZLIB_LIBS=-lz
+   AS_IF([test "$enable_static_zlib" = yes],
+     [ZLIB_LIBS="-Wl,-Bstatic $ZLIB_LIBS -Wl,-Bdynamic"])
+   LIBS="$ZLIB_LIBS $LIBS"],
+  [AC_MSG_ERROR([Unable to find zlib.])])
 
 AC_SEARCH_LIBS([socket], [socket network])
 AC_SEARCH_LIBS([inet_addr], [nsl])
@@ -234,12 +294,9 @@ AC_CHECK_HEADERS([endian.h sys/endian.h])
 AC_CHECK_HEADERS([utmpx.h])
 AC_CHECK_HEADERS([termio.h])
 AC_CHECK_HEADERS([sys/uio.h])
-AC_LANG_PUSH(C++)
 AC_CHECK_HEADERS([memory tr1/memory])
-AC_LANG_POP(C++)
 
 # Checks for typedefs, structures, and compiler characteristics.
-AC_HEADER_STDBOOL
 AC_C_INLINE
 AC_TYPE_INT64_T
 AC_TYPE_PID_T
@@ -253,31 +310,11 @@ AC_TYPE_UINT8_T
 AC_TYPE_UINTPTR_T
 
 # Checks for library functions.
-AC_FUNC_FORK
-AC_FUNC_MBRTOWC
 AC_CHECK_FUNCS(m4_normalize([
   gettimeofday
-  setrlimit
-  iswprint
-  memchr
-  memset
-  nl_langinfo
   posix_memalign
-  setenv
-  setlocale
-  sigaction
-  socket
-  strchr
-  strdup
-  strncasecmp
-  strtok
-  strerror
-  strtol
-  wcwidth
   cfmakeraw
   pselect
-  getaddrinfo
-  getnameinfo
   pledge
   ]))
 
@@ -292,7 +329,7 @@ PKG_CHECK_MODULES([TINFO], [tinfo],
         AC_SUBST([TINFO_LIBS], ["$TINFO_LDFLAGS -ltinfo"])],)])])
 
 # Then try to find it in a specific install dir
-AC_ARG_WITH(curses, AC_HELP_STRING([--with-curses=DIR], [Where curses is installed]),
+AC_ARG_WITH(curses, [AC_HELP_STRING([--with-curses=DIR], [Where curses is installed])],
     [if test $withval != yes; then
         cv_curses=$withval
     fi
@@ -321,6 +358,12 @@ if test "x$ax_cv_have_TINFO" = xno ; then
     fi
 fi
 
+AC_ARG_ENABLE([static-curses],
+  [AS_HELP_STRING([--enable-static-curses], [Link curses statically @<:@no@:>@])],
+  [], [enable_static_curses="$enable_static_libraries"])
+AS_IF([test "$enable_static_curses" = yes],
+  [TINFO_LIBS="-Wl,-Bstatic $TINFO_LIBS -Wl,-Bdynamic"])
+
 dnl Default to OpenSSL, or OS X crypto library if found
 AC_CHECK_HEADERS([CommonCrypto/CommonCrypto.h],
   [default_crypto_library="apple-common-crypto"],
@@ -333,7 +376,7 @@ AC_ARG_WITH(
   [AS_HELP_STRING([--with-crypto-library=library], [build with the given crypto library, TYPE=openssl|nettle|apple-common-crypto @<:@default=openssl@:>@])],
   [
     case "${withval}" in
-      openssl|nettle|apple-common-crypto) ;;
+      openssl|openssl-with-internal-ocb|openssl-with-openssl-ocb|nettle|apple-common-crypto) ;;
       *) AC_MSG_ERROR([bad value ${withval} for --with-crypto-library]) ;;
     esac
   ],
@@ -341,69 +384,79 @@ AC_ARG_WITH(
 )
 
 dnl Checks for chosen crypto library
+PKG_CHECK_MODULES([OpenSSL], [openssl],
+  [have_openssl=yes
+    AC_CHECK_LIB([crypto], [AES_encrypt], [have_deprecated_openssl_aes=yes])
+    AC_CHECK_LIB([crypto], [EVP_aes_128_ocb], [have_evp_aes_ocb=yes])],
+  [:])
+PKG_CHECK_MODULES([Nettle], [nettle], [have_nettle=yes], [:])
+AS_CASE([$with_crypto_library],
+  [openssl*],
+    [AS_IF([test "x$have_openssl" != xyes],
+       [AC_MSG_ERROR([OpenSSL crypto library not found])])
+     AC_DEFINE([USE_OPENSSL_AES], [1], [Use OpenSSL library])
+     AC_SUBST([CRYPTO_CFLAGS], ["$OpenSSL_CFLAGS"])
+     AC_SUBST([CRYPTO_LIBS], ["$OpenSSL_LIBS -lcrypto"])])
 case "${with_crypto_library}" in
-  openssl)
-    PKG_CHECK_MODULES([CRYPTO], [openssl],
-      [AC_DEFINE([USE_OPENSSL_AES], [1], [Use OpenSSL library])],
-      [AX_CHECK_LIBRARY([CRYPTO], [openssl/aes.h], [crypto],
-        [AC_DEFINE([USE_OPENSSL_AES], [1], [Use OpenSSL library])
-          AC_SUBST([CRYPTO_CFLAGS], ["$CRYPTO_CPPFLAGS"])
-          AC_SUBST([CRYPTO_LIBS], ["$CRYPTO_LDFLAGS -lcrypto"])],
-        [AC_MSG_ERROR([OpenSSL crypto library not found])])])
-        ;;
+  openssl|openssl-with-internal-ocb)
+    AS_IF([test "x$have_deprecated_openssl_aes" != xyes],
+      [AC_MSG_ERROR([found OpenSSL without AES support])])
+    AM_CONDITIONAL([USE_AES_OCB_FROM_OPENSSL], [false])
+    human_readable_cryptography_description='internal OCB, OpenSSL AES'
+    ;;
+  openssl-with-openssl-ocb)
+    AS_IF([test "x$have_evp_aes_ocb" != xyes],
+      [AC_MSG_ERROR([found OpenSSL without AES-OCB support])])
+    AM_CONDITIONAL([USE_AES_OCB_FROM_OPENSSL], [true])
+    human_readable_cryptography_description='OpenSSL OCB, OpenSSL AES'
+    ;;
   nettle)
-    PKG_CHECK_MODULES([CRYPTO], [nettle],
-      [],
+    AS_IF([test "x$have_nettle" != xyes],
       [AC_MSG_ERROR([Nettle crypto library not found])])
     AC_DEFINE([USE_NETTLE_AES], [1], [Use Nettle library])
+    AC_SUBST([CRYPTO_CFLAGS], ["$Nettle_CFLAGS"])
+    AC_SUBST([CRYPTO_LIBS], ["$Nettle_LIBS"])
+    AM_CONDITIONAL([USE_AES_OCB_FROM_OPENSSL], [false])
+    human_readable_cryptography_description='internal OCB, Nettle AES'
     ;;
   apple-common-crypto)
-    dnl Common Crypto is in Apple's standard paths and base libraries.
-    dnl So just check for presence of the header.
-    AC_CHECK_HEADERS([CommonCrypto/CommonCrypto.h],
-      [],
+    AS_IF([test "x$ac_cv_header_CommonCrypto_CommonCrypto_h" != xyes],
       [AC_MSG_ERROR([Apple Common Crypto header not found])])
     AC_DEFINE([USE_APPLE_COMMON_CRYPTO_AES], [1], [Use Apple Common Crypto library])
+    AM_CONDITIONAL([USE_AES_OCB_FROM_OPENSSL], [false])
+    human_readable_cryptography_description='internal OCB, Apple Common Crypto AES'
     ;;
 esac
+
+AC_ARG_ENABLE([static-crypto],
+  [AS_HELP_STRING([--enable-static-crypto], [Link crypto library statically @<:@no@:>@])],
+  [], [enable_static_crypto="$enable_static_libraries"])
+AS_IF([test "$enable_static_crypto" = yes],
+  [CRYPTO_LIBS="-Wl,-Bstatic $CRYPTO_LIBS -Wl,-Bdynamic"])
 
 AC_CHECK_DECL([forkpty],
   [AC_DEFINE([FORKPTY_IN_LIBUTIL], [1],
      [Define if libutil.h necessary for forkpty().])],
   , [[#include <sys/types.h>
-  #include <libutil.h>]])
+#include <libutil.h>]])
 
 AC_SEARCH_LIBS([forkpty], [util bsd], [
   AC_DEFINE([HAVE_FORKPTY],, [Define if you have forkpty().])
 ])
 
-AC_MSG_CHECKING([whether pipe2(..., O_CLOEXEC) is supported])
-AC_LINK_IFELSE([AC_LANG_PROGRAM([[#define _GNU_SOURCE
-#include <unistd.h>
-#include <fcntl.h>
-int pipefd[2];
-]], [[(void) pipe2(pipefd, O_CLOEXEC);]])],
-  [AC_DEFINE([HAVE_PIPE2_CLOEXEC], [1],
-     [Define if pipe2(..., O_CLOEXEC) is available.])
-   AC_MSG_RESULT([yes])],
-  [AC_MSG_RESULT([no])])
-
 AC_MSG_CHECKING([whether FD_ISSET() argument is const])
-AC_LANG_PUSH(C++)
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <sys/select.h>
 class T {
 public:
   fd_set fds;
   bool Fun( void ) const { return FD_ISSET( 0, &fds ); } };]],
-[[T x; return x.Fun();]])],
+[[T x = T(); return x.Fun();]])],
   [AC_DEFINE([FD_ISSET_IS_CONST], [1],
      [Define if FD_ISSET() fd_set argument is const.])
    AC_MSG_RESULT([yes])],
   [AC_MSG_RESULT([no])])
-AC_LANG_POP(C++)
 
 AC_MSG_CHECKING([whether std::shared_ptr is available])
-AC_LANG_PUSH(C++)
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <memory>
 class T {
 public:
@@ -413,10 +466,8 @@ public:
      [Define if std::shared_ptr is available.])
    AC_MSG_RESULT([yes])],
   [AC_MSG_RESULT([no])])
-AC_LANG_POP(C++)
 
 AC_MSG_CHECKING([whether std::tr1::shared_ptr is available])
-AC_LANG_PUSH(C++)
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <tr1/memory>
 class T {
 public:
@@ -426,7 +477,6 @@ public:
      [Define if std::tr1::shared_ptr is available.])
    AC_MSG_RESULT([yes])],
   [AC_MSG_RESULT([no])])
-AC_LANG_POP(C++)
 
 AC_MSG_CHECKING([whether clock_gettime() is supported])
 AS_IF([test x"$build_ios_controller" != xno], 
@@ -498,6 +548,34 @@ PKG_CHECK_MODULES([protobuf], [protobuf])
 AS_IF([echo "$protobuf_LIBS" | grep -q -- -pthread],
   [protobuf_LIBS="`echo $protobuf_LIBS | sed 's/-lpthread//g'`"])
 
+AC_ARG_ENABLE([static-protobuf],
+  [AS_HELP_STRING([--enable-static-protobuf], [Link protobuf statically @<:@no@:>@])],
+  [], [enable_static_protobuf="$enable_static_libraries"])
+AS_IF([test "$enable_static_protobuf" = yes],
+  [protobuf_LIBS="-Wl,-Bstatic $protobuf_LIBS -Wl,-Bdynamic"],
+  [AS_IF([test "$enable_static_libstdc__" = yes],
+     [AC_MSG_ERROR([--enable-static-libstdc++ requires --enable-static-protobuf])])
+   AS_IF([test "$enable_static_libgcc" = yes],
+     [AC_MSG_ERROR([--enable-static-libgcc requires --enable-static-protobuf])])])
+
+AC_MSG_CHECKING([whether protoc matches protobuf])
+cat > conftest.proto <<'EOF'
+syntax = "proto2";
+option optimize_for = LITE_RUNTIME;
+EOF
+AS_IF([$PROTOC --cpp_out=. conftest.proto],
+  [old_CPPFLAGS="$CPPFLAGS"
+   CPPFLAGS="$CPPFLAGS $protobuf_CFLAGS"
+   AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include "conftest.pb.h"]], [[]])],
+    [AC_MSG_RESULT([yes])],
+    [AC_MSG_RESULT([no])
+     cat conftest.err
+     AC_MSG_FAILURE([Could not build output generated by protoc ($PROTOC).
+Check that protoc matches the installed protobuf headers and libraries.])])
+   CPPFLAGS="$old_CPPFLAGS"],
+  [AC_MSG_RESULT([no])
+   AC_MSG_ERROR([Could not run protoc ($PROTOC).])])
+
 # Bash completion needs to ask where it goes if >= 2.0 is installed.
 AS_IF([test "$install_completion" != no],
   [PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
@@ -514,6 +592,8 @@ AC_CONFIG_FILES([
   src/Makefile
   src/crypto/Makefile
   src/frontend/Makefile
+  src/fuzz/Makefile
+  src/include/Makefile
   src/network/Makefile
   src/protobufs/Makefile
   src/statesync/Makefile
@@ -533,4 +613,5 @@ AC_MSG_NOTICE([c++ compiler:        $CXX])
 AC_MSG_NOTICE([Warning CXXFLAGS:    $WARNING_CXXFLAGS])
 AC_MSG_NOTICE([Picky CXXFLAGS:      $PICKY_CXXFLAGS])
 AC_MSG_NOTICE([Harden CFLAGS:       $HARDEN_CFLAGS])
+AC_MSG_NOTICE([Cryptography:        $human_readable_cryptography_description])
 AC_MSG_NOTICE([ =============================])
