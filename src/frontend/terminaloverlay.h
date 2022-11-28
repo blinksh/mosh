@@ -271,6 +271,7 @@ namespace Overlay {
   public:
     void set_display_preference( DisplayPreference s_pref ) { display_preference = s_pref; }
     void set_predict_overwrite( bool overwrite ) { predict_overwrite = overwrite; }
+    bool get_predict_overwrite() { return predict_overwrite; }
 
     void apply( Framebuffer &fb ) const;
     void new_user_byte( char the_byte, const Framebuffer &fb );

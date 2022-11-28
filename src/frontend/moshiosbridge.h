@@ -12,7 +12,7 @@ int mosh_main(
     void (*state_callback)(const void *, const void *, size_t),
     void *state_callback_context,
     const char *ip, const char *port, const char *key, const char *predict_mode,
-    const char *encoded_state_buffer, size_t encoded_state_size
+    const char *encoded_state_buffer, size_t encoded_state_size, const char *predict_overwrite
     );
 
 #endif

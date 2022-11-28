@@ -8,7 +8,7 @@ int mosh_main(
     void (*state_callback)(const void *, const void *, size_t),
     void *state_callback_context,
     const char *ip, const char *port, const char *key, const char *predict_mode,
-    const char *encoded_state_buffer, size_t encoded_state_size
+    const char *encoded_state_buffer, size_t encoded_state_size, const char *predict_overwrite
               )
 {
   //fwrite("Hello from the Bridge!\n", 22, 1, f_out);
@@ -21,7 +21,7 @@ int mosh_main(
   try {
     iOSClient client(
         fileno(f_in), f_out, window_size, state_callback, state_callback_context,
-        ip, port, key, predict_mode, 0
+        ip, port, key, predict_mode, 0, predict_overwrite
         );
 
     client.init();
