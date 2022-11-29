@@ -9,7 +9,6 @@ message Context {
   required bytes current_state_patch = 2;
   repeated TimestampedState received_states = 3;
   repeated TimestampedState sent_states = 4;
-  optional bool predict_overwrite = 5;
 }
 
 message TimestampedState {

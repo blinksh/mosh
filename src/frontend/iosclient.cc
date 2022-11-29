@@ -250,7 +250,6 @@ void iOSClient::main_init( const string encoded_state )
   uint64_t now = timestamp();
 
   if (encoded_state.size() > 0 && context.ParseFromString(encoded_state)) {
-    overlays.get_prediction_engine().set_predict_overwrite(context.predict_overwrite());
     Crypto::set_seq(context.seq());
     blank.apply_string(context.current_state_patch());
 
@@ -376,7 +375,6 @@ bool iOSClient::process_user_input( int fd )
     Network::UserStream blank;
     string current_state_patch = network->get_current_state().diff_from(blank);
     states.set_current_state_patch(current_state_patch);
-    states.set_predict_overwrite(overlays.get_prediction_engine().get_predict_overwrite());
 
     network->start_shutdown();
     states.set_seq(Crypto::seq());
@@ -604,7 +602,6 @@ bool iOSClient::main( const string encoded_state )
         Network::UserStream blank;
         string current_state_patch = network->get_current_state().diff_from(blank);
         states.set_current_state_patch(current_state_patch);
-        states.set_predict_overwrite(overlays.get_prediction_engine().get_predict_overwrite());
 
         network->start_shutdown();
         states.set_seq(Crypto::seq());
