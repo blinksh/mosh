@@ -38,11 +38,12 @@ __thread sigset_t Select::dummy_sigset;
 
 __thread unsigned int Select::verbose = 0;
 
-static __thread Select * instance = NULL;
+static __thread Select* instance = NULL;
 
-Select &Select::get_instance( void ) {
+Select& Select::get_instance( void )
+{
   /* COFU may or may not be thread-safe, depending on compiler */
-  if (instance == NULL) {
+  if ( instance == NULL ) {
     instance = new Select();
   }
   return *instance;
@@ -53,6 +54,6 @@ void Select::handle_signal( int signum )
   fatal_assert( signum >= 0 );
   fatal_assert( signum <= MAX_SIGNAL_NUMBER );
 
-  Select &sel = get_instance();
-  sel.got_signal[ signum ] = 1;
+  Select& sel = get_instance();
+  sel.got_signal[signum] = 1;
 }

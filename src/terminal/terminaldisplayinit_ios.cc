@@ -36,26 +36,26 @@
 #include "config.h"
 #include "terminaldisplay.h"
 
-#include <string>
 #include <stdexcept>
+#include <string>
 
 #if defined HAVE_NCURSESW_CURSES_H
-#  include <ncursesw/curses.h>
-#  include <ncursesw/term.h>
+#include <ncursesw/curses.h>
+#include <ncursesw/term.h>
 #elif defined HAVE_NCURSESW_H
-#  include <ncursesw.h>
-#  include <term.h>
+#include <ncursesw.h>
+#include <term.h>
 #elif defined HAVE_NCURSES_CURSES_H
-#  include <ncurses/curses.h>
-#  include <ncurses/term.h>
+#include <ncurses/curses.h>
+#include <ncurses/term.h>
 #elif defined HAVE_NCURSES_H
-#  include <ncurses.h>
-#  include <term.h>
+#include <ncurses.h>
+#include <term.h>
 #elif defined HAVE_CURSES_H
-#  include <curses.h>
-#  include <term.h>
+#include <curses.h>
+#include <term.h>
 #else
-#  error "SysV or X/Open-compatible Curses header file required"
+#error "SysV or X/Open-compatible Curses header file required"
 #endif
 
 #include <stdlib.h>
@@ -63,11 +63,9 @@
 
 using namespace Terminal;
 
-//#if !defined IOS_CONTROLLER
+// #if !defined IOS_CONTROLLER
 
 Display::Display( bool use_environment )
   : has_ech( true ), has_bce( true ), has_title( true ), smcup( "\033[?1049h" ), rmcup( "\033[?1049l" )
-{
-  
-}
-//#endif
+{}
+// #endif

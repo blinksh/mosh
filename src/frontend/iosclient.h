@@ -33,19 +33,20 @@
 #ifndef IOS_CLIENT_HPP
 #define IOS_CLIENT_HPP
 
+#include <string>
 #include <sys/ioctl.h>
 #include <termios.h>
-#include <string>
 
 #include "completeterminal.h"
 #include "networktransport.h"
-#include "user.h"
 #include "terminaloverlay.h"
+#include "user.h"
 
-class iOSClient {
+class iOSClient
+{
 private:
   int in_fd;
-  FILE *out_fd;
+  FILE* out_fd;
 
   std::string ip;
   std::string port;
@@ -59,14 +60,14 @@ private:
 
   struct termios saved_termios, raw_termios;
 
-  struct winsize *window_size;
+  struct winsize* window_size;
 
-  void (*state_callback)(const void*, const void *, size_t);
-  void *state_callback_context;
+  void ( *state_callback )( const void*, const void*, size_t );
+  void* state_callback_context;
 
   Terminal::Framebuffer local_framebuffer, new_state;
   Overlay::OverlayManager overlays;
-  Network::Transport< Network::UserStream, Terminal::Complete > *network;
+  Network::Transport<Network::UserStream, Terminal::Complete>* network;
   Terminal::Display display;
 
   std::wstring connecting_notification;
@@ -90,49 +91,43 @@ private:
   void resume( void ); /* restore state after SIGCONT */
 
 public:
- iOSClient(
-     int s_in_fd, FILE *s_out_fd,
-     struct winsize *s_window_size, void (*s_state_callback)(const void *, const void *, size_t),
-     void *s_state_callback_context,
-     const char *s_ip, const char *s_port, const char *s_key, const char *predict_mode, unsigned int s_verbose, const char *predict_overwrite )
-   : in_fd( s_in_fd ), out_fd( s_out_fd ),
-    ip( s_ip ), port( s_port ), key( s_key ),
-    escape_key( 0x1E ), escape_pass_key( '^' ), escape_pass_key2( '^' ),
-    escape_requires_lf( false ), escape_key_help( L"?" ),
-      saved_termios(), raw_termios(),
-      window_size( s_window_size ),
-      state_callback( s_state_callback ),
-      state_callback_context(s_state_callback_context),
-      local_framebuffer( 1, 1 ),
-      new_state( 1, 1 ),
-      overlays(),
-      network( ),
-      display( true ), /* use TERM environment var to initialize display */
-      connecting_notification(),
-      repaint_requested( false ),
-      lf_entered( false ),
-      quit_sequence_started( false ),
-      clean_shutdown( false ),
-      verbose( s_verbose )
+  iOSClient( int s_in_fd,
+             FILE* s_out_fd,
+             struct winsize* s_window_size,
+             void ( *s_state_callback )( const void*, const void*, size_t ),
+             void* s_state_callback_context,
+             const char* s_ip,
+             const char* s_port,
+             const char* s_key,
+             const char* predict_mode,
+             unsigned int s_verbose,
+             const char* predict_overwrite )
+    : in_fd( s_in_fd ), out_fd( s_out_fd ), ip( s_ip ), port( s_port ), key( s_key ), escape_key( 0x1E ),
+      escape_pass_key( '^' ), escape_pass_key2( '^' ), escape_requires_lf( false ), escape_key_help( L"?" ),
+      saved_termios(), raw_termios(), window_size( s_window_size ), state_callback( s_state_callback ),
+      state_callback_context( s_state_callback_context ), local_framebuffer( 1, 1 ), new_state( 1, 1 ), overlays(),
+      network(), display( true ), /* use TERM environment var to initialize display */
+      connecting_notification(), repaint_requested( false ), lf_entered( false ), quit_sequence_started( false ),
+      clean_shutdown( false ), verbose( s_verbose )
   {
     if ( predict_mode ) {
       if ( !strcmp( predict_mode, "always" ) ) {
-	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Always );
+        overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Always );
       } else if ( !strcmp( predict_mode, "never" ) ) {
-	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Never );
+        overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Never );
       } else if ( !strcmp( predict_mode, "adaptive" ) ) {
-	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Adaptive );
+        overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Adaptive );
       } else if ( !strcmp( predict_mode, "experimental" ) ) {
-	overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Experimental );
+        overlays.get_prediction_engine().set_display_preference( Overlay::PredictionEngine::Experimental );
       } else {
-	fprintf( stderr, "Unknown prediction mode %s.\n", predict_mode );
-	exit( 1 );
+        fprintf( stderr, "Unknown prediction mode %s.\n", predict_mode );
+        exit( 1 );
       }
     }
 
     if ( predict_overwrite && !strcmp( predict_overwrite, "yes" ) ) {
       overlays.get_prediction_engine().set_predict_overwrite( true );
-    } 
+    }
   }
 
   void init( void );
@@ -147,8 +142,8 @@ public:
   }
 
   /* unused */
-  iOSClient( const iOSClient & );
-  iOSClient & operator=( const iOSClient & );
+  iOSClient( const iOSClient& );
+  iOSClient& operator=( const iOSClient& );
 };
 
 #endif
