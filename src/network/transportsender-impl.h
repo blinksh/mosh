@@ -59,7 +59,7 @@ TransportSender<MyState>::TransportSender( Connection* s_connection, MyState& in
 template<class MyState>
 TransportSender<MyState>::TransportSender( Connection* s_connection,
                                            MyState& initial_state,
-                                           list<TimestampedState<MyState>> restored_sent_states )
+                                           std::list<TimestampedState<MyState>> restored_sent_states )
   : connection( s_connection ), current_state( initial_state ), sent_states( restored_sent_states ),
     assumed_receiver_state( sent_states.begin() ), fragmenter(), next_ack_time( timestamp() ),
     next_send_time( timestamp() ), verbose( 0 ), shutdown_in_progress( false ), shutdown_tries( 0 ),

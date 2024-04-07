@@ -70,8 +70,8 @@ Transport<MyState, RemoteState>::Transport( MyState& initial_state,
                                             const char* key_str,
                                             const char* ip,
                                             const char* port,
-                                            list<TimestampedState<MyState>> restored_sent_states,
-                                            list<TimestampedState<RemoteState>> restored_received_states )
+                                            std::list<TimestampedState<MyState>> restored_sent_states,
+                                            std::list<TimestampedState<RemoteState>> restored_received_states )
   : connection( key_str, ip, port ), sender( &connection, initial_state, restored_sent_states ),
     received_states( restored_received_states ), receiver_quench_timer( 0 ), last_receiver_state( initial_remote ),
     fragments(), verbose( 0 )

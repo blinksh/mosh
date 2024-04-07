@@ -50,21 +50,21 @@
 #include <util.h>
 #endif
 
-#include "completeterminal.h"
-#include "fatal_assert.h"
-#include "iosclient.h"
-#include "locale_utils.h"
-#include "pty_compat.h"
-#include "select.h"
-#include "swrite.h"
-#include "timestamp.h"
-#include "user.h"
+#include "src/crypto/crypto.h"
+#include "src/frontend/iosclient.h"
+#include "src/network/networktransport-impl.h"
+#include "src/protobufs/restoration.pb.h"
+#include "src/statesync/completeterminal.h"
+#include "src/statesync/user.h"
+#include "src/util/fatal_assert.h"
+#include "src/util/locale_utils.h"
+#include "src/util/pty_compat.h"
+#include "src/util/select.h"
+#include "src/util/swrite.h"
+#include "src/util/timestamp.h"
 
-#include "networktransport-impl.h"
-
-#include "crypto.h"
-#include "restoration.pb.h"
-
+#undef STDIN_FILENO
+#undef STDOUT_FILENO
 #define STDIN_FILENO in_fd
 #define STDOUT_FILENO out_fd
 
@@ -89,7 +89,7 @@ void iOSClient::init( void )
 {
   if ( !is_utf8_locale() ) {
     LocaleVar native_ctype = get_ctype();
-    string native_charset( locale_charset() );
+    std::string native_charset( locale_charset() );
 
     fprintf( out_fd, "mosh-client needs a UTF-8 native locale to run.\r\n" );
     fprintf( out_fd,
@@ -194,10 +194,10 @@ void iOSClient::init( void )
       snprintf( escape_key_name_buf, sizeof escape_key_name_buf, "\"%c\"", escape_key );
       escape_requires_lf = true;
     }
-    string tmp;
-    tmp = string( escape_pass_name_buf );
+    std::string tmp;
+    tmp = std::string( escape_pass_name_buf );
     wstring escape_pass_name = std::wstring( tmp.begin(), tmp.end() );
-    tmp = string( escape_key_name_buf );
+    tmp = std::string( escape_key_name_buf );
     wstring escape_key_name = std::wstring( tmp.begin(), tmp.end() );
     escape_key_help
       = L"Commands: Ctrl-Z suspends, \".\" quits, " + escape_pass_name + L" gives literal " + escape_key_name;
@@ -241,7 +241,7 @@ void iOSClient::shutdown( void )
   }
 }
 
-void iOSClient::main_init( const string encoded_state )
+void iOSClient::main_init( const std::string encoded_state )
 {
 
   /* local state */
@@ -249,7 +249,7 @@ void iOSClient::main_init( const string encoded_state )
   new_state = Terminal::Framebuffer( 1, 1 );
 
   /* initialize screen */
-  string init = display.new_frame( false, local_framebuffer, local_framebuffer );
+  std::string init = display.new_frame( false, local_framebuffer, local_framebuffer );
   fwrite( init.data(), init.size(), 1, out_fd );
 
   /* open network */
@@ -263,7 +263,7 @@ void iOSClient::main_init( const string encoded_state )
     Crypto::set_seq( context.seq() );
     blank.apply_string( context.current_state_patch() );
 
-    list<TimestampedState<Terminal::Complete>> received_states;
+    std::list<TimestampedState<Terminal::Complete>> received_states;
     int received_count = context.received_states_size();
 
     for ( int i = 0; i < received_count; i++ ) {
@@ -278,7 +278,7 @@ void iOSClient::main_init( const string encoded_state )
       received_states.push_back( TimestampedState<Terminal::Complete>( restored_ts, ts.num(), state ) );
     }
 
-    list<TimestampedState<Network::UserStream>> sent_states;
+    std::list<TimestampedState<Network::UserStream>> sent_states;
     int sent_count = context.sent_states_size();
     for ( int i = 0; i < sent_count; i++ ) {
       Restoration::TimestampedState ts = context.sent_states( i );
@@ -317,7 +317,7 @@ void iOSClient::output_new_frame( void )
   overlays.apply( new_state );
 
   /* calculate minimal difference from where we are */
-  const string diff( display.new_frame( !repaint_requested, local_framebuffer, new_state ) );
+  const std::string diff( display.new_frame( !repaint_requested, local_framebuffer, new_state ) );
   // swrite( STDOUT_FILENO, diff.data(), diff.size() );
   fwrite( diff.data(), diff.size(), 1, out_fd );
 
@@ -380,17 +380,17 @@ bool iOSClient::process_user_input( int fd )
 
           Restoration::Context states;
           uint64_t now = timestamp();
-          list<TimestampedState<Terminal::Complete>> received_states = network->get_received_states();
-          list<TimestampedState<Network::UserStream>> sent_states = network->get_sent_states();
+          std::list<TimestampedState<Terminal::Complete>> received_states = network->get_received_states();
+          std::list<TimestampedState<Network::UserStream>> sent_states = network->get_sent_states();
 
           Network::UserStream blank;
-          string current_state_patch = network->get_current_state().diff_from( blank );
+          std::string current_state_patch = network->get_current_state().diff_from( blank );
           states.set_current_state_patch( current_state_patch );
 
           network->start_shutdown();
           states.set_seq( Crypto::seq() );
 
-          for ( list<TimestampedState<Terminal::Complete>>::iterator i = received_states.begin();
+          for ( std::list<TimestampedState<Terminal::Complete>>::iterator i = received_states.begin();
                 i != received_states.end();
                 i++ ) {
             Restoration::TimestampedState* ts = states.add_received_states();
@@ -402,7 +402,7 @@ bool iOSClient::process_user_input( int fd )
             ts->set_patch( state.state.init_diff() );
           }
 
-          for ( list<TimestampedState<Network::UserStream>>::iterator i = sent_states.begin();
+          for ( std::list<TimestampedState<Network::UserStream>>::iterator i = sent_states.begin();
                 i != sent_states.end();
                 i++ ) {
             Restoration::TimestampedState* ts = states.add_sent_states();
@@ -414,7 +414,7 @@ bool iOSClient::process_user_input( int fd )
             ts->set_patch( state.state.init_diff() );
           }
 
-          string encodedState = states.SerializeAsString();
+          std::string encodedState = states.SerializeAsString();
           size_t encodedStateSize = encodedState.size();
           state_callback( state_callback_context, encodedState.data(), encodedStateSize );
 
@@ -504,7 +504,7 @@ bool iOSClient::process_resize( void )
   return true;
 }
 
-bool iOSClient::main( const string encoded_state )
+bool iOSClient::main( const std::string encoded_state )
 {
   /* initialize signal handling and structures */
   Select& sel = Select::get_instance();
@@ -602,17 +602,17 @@ bool iOSClient::main( const string encoded_state )
         uint64_t now = timestamp();
 
         Restoration::Context states;
-        list<TimestampedState<Terminal::Complete>> received_states = network->get_received_states();
-        list<TimestampedState<Network::UserStream>> sent_states = network->get_sent_states();
+        std::list<TimestampedState<Terminal::Complete>> received_states = network->get_received_states();
+        std::list<TimestampedState<Network::UserStream>> sent_states = network->get_sent_states();
 
         Network::UserStream blank;
-        string current_state_patch = network->get_current_state().diff_from( blank );
+        std::string current_state_patch = network->get_current_state().diff_from( blank );
         states.set_current_state_patch( current_state_patch );
 
         network->start_shutdown();
         states.set_seq( Crypto::seq() );
 
-        for ( list<TimestampedState<Terminal::Complete>>::iterator i = received_states.begin();
+        for ( std::list<TimestampedState<Terminal::Complete>>::iterator i = received_states.begin();
               i != received_states.end();
               i++ ) {
           Restoration::TimestampedState* ts = states.add_received_states();
@@ -624,7 +624,7 @@ bool iOSClient::main( const string encoded_state )
           ts->set_patch( state.state.init_diff() );
         }
 
-        for ( list<TimestampedState<Network::UserStream>>::iterator i = sent_states.begin(); i != sent_states.end();
+        for ( std::list<TimestampedState<Network::UserStream>>::iterator i = sent_states.begin(); i != sent_states.end();
               i++ ) {
           Restoration::TimestampedState* ts = states.add_sent_states();
 
@@ -635,7 +635,7 @@ bool iOSClient::main( const string encoded_state )
           ts->set_patch( state.state.init_diff() );
         }
 
-        string encodedState = states.SerializeAsString();
+        std::string encodedState = states.SerializeAsString();
         size_t encodedStateSize = encodedState.size();
         state_callback( state_callback_context, encodedState.data(), encodedStateSize );
 
@@ -679,7 +679,7 @@ bool iOSClient::main( const string encoded_state )
 
       network->tick();
 
-      string& send_error = network->get_send_error();
+      std::string& send_error = network->get_send_error();
       if ( !send_error.empty() ) {
         overlays.get_notification_engine().set_network_error( send_error );
         send_error.clear();

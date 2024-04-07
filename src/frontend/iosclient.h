@@ -37,10 +37,10 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 
-#include "completeterminal.h"
-#include "networktransport.h"
-#include "terminaloverlay.h"
-#include "user.h"
+#include "src/frontend/terminaloverlay.h"
+#include "src/network/networktransport.h"
+#include "src/statesync/completeterminal.h"
+#include "src/statesync/user.h"
 
 class iOSClient
 {
@@ -75,7 +75,7 @@ private:
   bool clean_shutdown;
   unsigned int verbose;
 
-  void main_init( const string encoded_state );
+  void main_init( const std::string encoded_state );
   void process_network_input( void );
   bool process_user_input( int fd );
   bool process_resize( void );
@@ -132,7 +132,7 @@ public:
 
   void init( void );
   void shutdown( void );
-  bool main( const string encoded_state );
+  bool main( const std::string encoded_state );
 
   ~iOSClient()
   {

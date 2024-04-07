@@ -1,6 +1,6 @@
-#include "moshiosbridge.h"
-#include "iosclient.h"
-#include "locale_utils.h"
+#include "src/frontend/iosclient.h"
+#include "src/frontend/moshiosbridge.h"
+#include "src/util/locale_utils.h"
 
 extern "C" int mosh_main( FILE* f_in,
                           FILE* f_out,
@@ -19,7 +19,7 @@ extern "C" int mosh_main( FILE* f_in,
   /* Adopt native locale */
   set_native_locale();
 
-  string encoded_state = string( encoded_state_buffer, encoded_state_size );
+  std::string encoded_state = std::string( encoded_state_buffer, encoded_state_size );
 
   bool success = false;
   try {

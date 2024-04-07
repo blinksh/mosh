@@ -79,8 +79,8 @@ public:
              const char* key_str,
              const char* ip,
              const char* port,
-             list<TimestampedState<MyState>> restored_sent_states,
-             list<TimestampedState<RemoteState>> restored_received_states );
+             std::list<TimestampedState<MyState>> restored_sent_states,
+             std::list<TimestampedState<RemoteState>> restored_received_states );
 
   /* Send data or an ack if necessary. */
   void tick( void ) { sender.tick(); }
@@ -111,8 +111,8 @@ public:
   MyState& get_current_state( void ) { return sender.get_current_state(); }
   void set_current_state( const MyState& x ) { sender.set_current_state( x ); }
 
-  list<TimestampedState<RemoteState>> get_received_states( void ) { return received_states; }
-  list<TimestampedState<MyState>> get_sent_states( void ) { return sender.get_sent_states(); };
+  std::list<TimestampedState<RemoteState>> get_received_states( void ) { return received_states; }
+  std::list<TimestampedState<MyState>> get_sent_states( void ) { return sender.get_sent_states(); };
 
   uint64_t get_remote_state_num( void ) const { return received_states.back().num; }
 
