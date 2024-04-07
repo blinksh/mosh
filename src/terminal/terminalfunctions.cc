@@ -30,14 +30,15 @@
     also delete it here.
 */
 
-#include <unistd.h>
 #include <algorithm>
+#include <cstdio>
 #include <string>
-#include <stdio.h>
+
+#include <unistd.h>
 
 #include "terminaldispatcher.h"
-#include "terminalframebuffer.h"
-#include "parseraction.h"
+#include "src/terminal/terminalframebuffer.h"
+#include "src/terminal/parseraction.h"
 
 using namespace Terminal;
 

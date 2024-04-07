@@ -33,11 +33,11 @@
 #ifndef PRNG_HPP
 #define PRNG_HPP
 
-#include <string>
-#include <stdint.h>
+#include <cstdint>
 #include <fstream>
+#include <string>
 
-#include "crypto.h"
+#include "src/crypto/crypto.h"
 
 /* Read random bytes from /dev/urandom.
 

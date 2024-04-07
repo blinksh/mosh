@@ -33,12 +33,13 @@
 #ifndef CRYPTO_HPP
 #define CRYPTO_HPP
 
-#include "ae.h"
-#include <string>
-#include <string.h>
-#include <stdint.h>
-#include <stdlib.h>
+#include "src/crypto/ae.h"
+
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <exception>
+#include <string>
 
 
 long int myatoi( const char *str );
@@ -46,13 +47,11 @@ long int myatoi( const char *str );
 class PRNG;
 
 namespace Crypto {
-  using std::string;
-
   class CryptoException : public std::exception {
   public:
-    string text;
+    std::string text;
     bool fatal;
-    CryptoException( string s_text, bool s_fatal = false )
+    CryptoException( std::string s_text, bool s_fatal = false )
       : text( s_text ), fatal( s_fatal ) {};
     const char *what() const throw () { return text.c_str(); }
     ~CryptoException() throw () {}
@@ -97,8 +96,8 @@ namespace Crypto {
   public:
     Base64Key(); /* random key */
     Base64Key(PRNG &prng);
-    Base64Key( string printable_key );
-    string printable_key( void ) const;
+    Base64Key( std::string printable_key );
+    std::string printable_key( void ) const;
     unsigned char *data( void ) { return key; }
   };
 
@@ -113,7 +112,7 @@ namespace Crypto {
     Nonce( uint64_t val );
     Nonce( const char *s_bytes, size_t len );
     
-    string cc_str( void ) const { return string( bytes + 4, 8 ); }
+    std::string cc_str( void ) const { return std::string( bytes + 4, 8 ); }
     const char *data( void ) const { return bytes; }
     uint64_t val( void ) const;
   };
@@ -121,14 +120,14 @@ namespace Crypto {
   class Message {
   public:
     const Nonce nonce;
-    const string text;
+    const std::string text;
     
     Message( const char *nonce_bytes, size_t nonce_len,
 	     const char *text_bytes, size_t text_len )
       : nonce( nonce_bytes, nonce_len ),
       text( text_bytes, text_len ) {}
 
-    Message( const Nonce & s_nonce, const string & s_text )
+    Message( const Nonce & s_nonce, const std::string & s_text )
       : nonce( s_nonce ),
       text( s_text ) {}
   };
@@ -152,9 +151,9 @@ namespace Crypto {
     Session( Base64Key s_key );
     ~Session();
     
-    const string encrypt( const Message & plaintext );
+    const std::string encrypt( const Message & plaintext );
     const Message decrypt( const char *str, size_t len );
-    const Message decrypt( const string & ciphertext ) {
+    const Message decrypt( const std::string & ciphertext ) {
       return decrypt( ciphertext.data(), ciphertext.size() );
     }
     

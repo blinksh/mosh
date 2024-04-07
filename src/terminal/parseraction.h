@@ -33,10 +33,9 @@
 #ifndef PARSERACTION_HPP
 #define PARSERACTION_HPP
 
+#include <memory>
 #include <string>
 #include <vector>
-
-#include "shared.h"
 
 namespace Terminal {
   class Emulator;
@@ -59,8 +58,8 @@ namespace Parser {
     virtual ~Action() {};
   };
 
-  typedef shared::shared_ptr<Action> ActionPointer;
-  typedef std::vector<ActionPointer> Actions;
+  using ActionPointer = std::shared_ptr<Action>;
+  using Actions = std::vector<ActionPointer>;
 
   class Ignore : public Action {
   public:

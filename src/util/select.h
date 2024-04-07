@@ -33,14 +33,15 @@
 #ifndef SELECT_HPP
 #define SELECT_HPP
 
-#include <string.h>
-#include <errno.h>
-#include <signal.h>
-#include <sys/select.h>
-#include <assert.h>
+#include <cassert>
+#include <cerrno>
+#include <csignal>
+#include <cstring>
 
-#include "fatal_assert.h"
-#include "timestamp.h"
+#include <sys/select.h>
+
+#include "src/util/fatal_assert.h"
+#include "src/util/timestamp.h"
 
 /* Convenience wrapper for pselect(2).
 

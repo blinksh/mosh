@@ -30,10 +30,10 @@
     also delete it here.
 */
 
-#include <stdio.h>
+#include <cstdio>
 
 #include "terminaldisplay.h"
-#include "terminalframebuffer.h"
+#include "src/terminal/terminalframebuffer.h"
 
 using namespace Terminal;
 
@@ -68,7 +68,7 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
   if ( f.get_bell_count() != frame.last_frame.get_bell_count() ) {
     frame.append( '\007' );
   }
-  typedef Terminal::Framebuffer::title_type title_type;
+  using title_type = Terminal::Framebuffer::title_type;
 
   /* has icon name or window title changed? */
   if ( has_title && f.is_title_initialized() &&
@@ -160,7 +160,7 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
   /* Extend rows if we've gotten a resize and new is wider than old */
   if ( frame.last_frame.ds.get_width() < f.ds.get_width() ) {
     for ( Framebuffer::rows_type::iterator p = rows.begin(); p != rows.end(); p++ ) {
-      *p = make_shared<Row>( **p );
+      *p = std::make_shared<Row>( **p );
       (*p)->cells.resize( f.ds.get_width(), Cell( f.ds.get_background_rendition() ) );
     }
   }
@@ -169,7 +169,7 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
     // get a proper blank row
     const size_t w = f.ds.get_width();
     const color_type c = 0;
-    blank_row = make_shared<Row>( w, c );
+    blank_row = std::make_shared<Row>( w, c );
     rows.resize( f.ds.get_height(), blank_row );
   }
 
@@ -215,7 +215,7 @@ std::string Display::new_frame( bool initialized, const Framebuffer &last, const
 	if ( blank_row.get() == NULL ) {
 	  const size_t w = f.ds.get_width();
 	  const color_type c = 0;
-	  blank_row = make_shared<Row>( w, c );
+	  blank_row = std::make_shared<Row>( w, c );
 	}
 	frame.update_rendition( initial_rendition(), true );
 

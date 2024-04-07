@@ -30,11 +30,12 @@
     also delete it here.
 */
 
-#include <unistd.h>
-#include <string.h>
-#include <stdio.h>
+#include <cstdio>
+#include <cstring>
 
-#include "swrite.h"
+#include <unistd.h>
+
+#include "src/util/swrite.h"
 
 int swrite( int fd, const char *str, ssize_t len )
 {

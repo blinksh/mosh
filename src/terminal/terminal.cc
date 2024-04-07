@@ -30,13 +30,14 @@
     also delete it here.
 */
 
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
 #include <typeinfo>
 
-#include "terminal.h"
+#include <unistd.h>
+
+#include "src/terminal/terminal.h"
 
 using namespace Terminal;
 

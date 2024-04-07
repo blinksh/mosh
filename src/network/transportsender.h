@@ -37,15 +37,13 @@
 #include <string>
 #include <list>
 
-#include "network.h"
-#include "transportinstruction.pb.h"
+#include "src/network/network.h"
+#include "src/protobufs/transportinstruction.pb.h"
 #include "transportstate.h"
 #include "transportfragment.h"
-#include "prng.h"
+#include "src/crypto/prng.h"
 
 namespace Network {
-  using std::list;
-  using std::pair;
   using namespace TransportBuffers;
 
   /* timing parameters */
@@ -62,11 +60,11 @@ namespace Network {
   private:
     /* helper methods for tick() */
     void update_assumed_receiver_state( void );
-    void attempt_prospective_resend_optimization( string &proposed_diff );
+    void attempt_prospective_resend_optimization( std::string &proposed_diff );
     void rationalize_states( void );
-    void send_to_receiver( const string & diff );
+    void send_to_receiver( const std::string & diff );
     void send_empty_ack( void );
-    void send_in_fragments( const string & diff, uint64_t new_num );
+    void send_in_fragments( const std::string & diff, uint64_t new_num );
     void add_sent_state( uint64_t the_timestamp, uint64_t num, MyState &state );
 
     /* state of sender */
@@ -74,7 +72,7 @@ namespace Network {
 
     MyState current_state;
 
-    typedef list< TimestampedState<MyState> > sent_states_type;
+    using sent_states_type = std::list<TimestampedState<MyState>>;
     sent_states_type sent_states;
     /* first element: known, acknowledged receiver state */
     /* last element: last sent state */
@@ -106,7 +104,7 @@ namespace Network {
 
     /* chaff to disguise instruction length */
     PRNG prng;
-    const string make_chaff( void );
+    const std::string make_chaff( void );
 
     uint64_t mindelay_clock; /* time of first pending change to current state */
 

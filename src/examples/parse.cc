@@ -30,20 +30,21 @@
     also delete it here.
 */
 
-#include "config.h"
+#include "src/include/config.h"
 
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <errno.h>
-#include <string.h>
-#include <locale.h>
-#include <wchar.h>
-#include <assert.h>
-#include <wctype.h>
+#include <cassert>
+#include <cerrno>
+#include <clocale>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cwchar>
+#include <cwctype>
 #include <typeinfo>
+
 #include <termios.h>
+#include <unistd.h>
 
 #if HAVE_PTY_H
 #include <pty.h>
@@ -53,12 +54,12 @@
 #include <libutil.h>
 #endif
 
-#include "parser.h"
-#include "swrite.h"
-#include "locale_utils.h"
-#include "fatal_assert.h"
-#include "pty_compat.h"
-#include "select.h"
+#include "src/terminal/parser.h"
+#include "src/util/swrite.h"
+#include "src/util/locale_utils.h"
+#include "src/util/fatal_assert.h"
+#include "src/util/pty_compat.h"
+#include "src/util/select.h"
 
 const size_t buf_size = 1024;
 

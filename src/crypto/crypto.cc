@@ -30,19 +30,20 @@
     also delete it here.
 */
 
-#include <string.h>
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <sys/resource.h>
+#include <cassert>
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 
-#include "byteorder.h"
-#include "crypto.h"
-#include "base64.h"
-#include "fatal_assert.h"
-#include "prng.h"
+#include <sys/resource.h>
+
+#include "src/crypto/byteorder.h"
+#include "src/crypto/crypto.h"
+#include "src/crypto/base64.h"
+#include "src/util/fatal_assert.h"
+#include "src/crypto/prng.h"
 
 using namespace Crypto;
 
@@ -116,13 +117,13 @@ AlignedBuffer::AlignedBuffer( size_t len, const char *data )
   }
 }
 
-Base64Key::Base64Key( string printable_key )
+Base64Key::Base64Key( std::string printable_key )
 {
   if ( printable_key.length() != 22 ) {
     throw CryptoException( "Key must be 22 letters long." );
   }
 
-  string base64 = printable_key + "==";
+  std::string base64 = printable_key + "==";
 
   size_t len = 16;
   if ( !base64_decode( base64.data(), 24, key, &len ) ) {
@@ -149,7 +150,7 @@ Base64Key::Base64Key(PRNG &prng)
   prng.fill( key, sizeof( key ) );
 }
 
-string Base64Key::printable_key( void ) const
+std::string Base64Key::printable_key( void ) const
 {
   char base64[ 24 ];
   
@@ -157,11 +158,11 @@ string Base64Key::printable_key( void ) const
 
   if ( (base64[ 23 ] != '=')
        || (base64[ 22 ] != '=') ) {
-    throw CryptoException( string( "Unexpected output from base64_encode: " ) + string( base64, 24 ) );
+    throw CryptoException( std::string( "Unexpected output from base64_encode: " ) + std::string( base64, 24 ) );
   }
 
   base64[ 22 ] = 0;
-  return string( base64 );
+  return std::string( base64 );
 }
 
 Session::Session( Base64Key s_key )
@@ -206,7 +207,7 @@ Nonce::Nonce( const char *s_bytes, size_t len )
   memcpy( bytes + 4, s_bytes, 8 );
 }
 
-const string Session::encrypt( const Message & plaintext )
+const std::string Session::encrypt( const Message & plaintext )
 {
   const size_t pt_len = plaintext.text.size();
   const int ciphertext_len = pt_len + 16;
@@ -251,7 +252,7 @@ const string Session::encrypt( const Message & plaintext )
     throw CryptoException( "Encrypted 2^47 blocks.", true );
   }
 
-  string text( ciphertext_buffer.data(), ciphertext_len );
+  std::string text( ciphertext_buffer.data(), ciphertext_len );
 
   return plaintext.nonce.cc_str() + text;
 }
@@ -289,7 +290,7 @@ const Message Session::decrypt( const char *str, size_t len )
     throw CryptoException( "Packet failed integrity check." );
   }
 
-  const Message ret( nonce, string( plaintext_buffer.data(), pt_len ) );
+  const Message ret( nonce, std::string( plaintext_buffer.data(), pt_len ) );
 
   return ret;
 }

@@ -30,20 +30,21 @@
     also delete it here.
 */
 
-#include "config.h"
+#include "src/include/config.h"
+
+#include <cerrno>
+#include <clocale>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 
 #include <err.h>
-#include <errno.h>
-#include <locale.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
-#include <pwd.h>
-#include <signal.h>
-#include <time.h>
+#include <unistd.h>
 
 #if HAVE_PTY_H
 #include <pty.h>
@@ -52,18 +53,16 @@
 #endif
 
 #include "stmclient.h"
-#include "swrite.h"
-#include "completeterminal.h"
-#include "user.h"
-#include "fatal_assert.h"
-#include "locale_utils.h"
-#include "pty_compat.h"
-#include "select.h"
-#include "timestamp.h"
+#include "src/util/swrite.h"
+#include "src/statesync/completeterminal.h"
+#include "src/statesync/user.h"
+#include "src/util/fatal_assert.h"
+#include "src/util/locale_utils.h"
+#include "src/util/pty_compat.h"
+#include "src/util/select.h"
+#include "src/util/timestamp.h"
 
-#include "networktransport-impl.h"
-
-using std::wstring;
+#include "src/network/networktransport-impl.h"
 
 void STMClient::resume( void )
 {
@@ -84,7 +83,7 @@ void STMClient::init( void )
 {
   if ( !is_utf8_locale() ) {
     LocaleVar native_ctype = get_ctype();
-    string native_charset( locale_charset() );
+    std::string native_charset( locale_charset() );
 
     fprintf( stderr, "mosh-client needs a UTF-8 native locale to run.\n\n"
 	     "Unfortunately, the client's environment (%s) specifies\n"
@@ -123,7 +122,7 @@ void STMClient::init( void )
 
   /* Add our name to window title */
   if ( !getenv( "MOSH_TITLE_NOPREFIX" ) ) {
-    overlays.set_title_prefix( wstring( L"[mosh] " ) );
+    overlays.set_title_prefix( std::wstring( L"[mosh] " ) );
   }
 
   /* Set terminal escape key. */
@@ -185,25 +184,25 @@ void STMClient::init( void )
       snprintf(escape_key_name_buf, sizeof escape_key_name_buf, "\"%c\"", escape_key);
       escape_requires_lf = true;
     }
-    string tmp;
-    tmp = string( escape_pass_name_buf );
-    wstring escape_pass_name = std::wstring(tmp.begin(), tmp.end());
-    tmp = string( escape_key_name_buf );
-    wstring escape_key_name = std::wstring(tmp.begin(), tmp.end());
+    std::string tmp;
+    tmp = std::string( escape_pass_name_buf );
+    std::wstring escape_pass_name = std::wstring(tmp.begin(), tmp.end());
+    tmp = std::string( escape_key_name_buf );
+    std::wstring escape_key_name = std::wstring(tmp.begin(), tmp.end());
     escape_key_help = L"Commands: Ctrl-Z suspends, \".\" quits, " + escape_pass_name + L" gives literal " + escape_key_name;
     overlays.get_notification_engine().set_escape_key_string( tmp );
   }
   wchar_t tmp[ 128 ];
   swprintf( tmp, 128, L"Nothing received from server on UDP port %s.", port.c_str() );
-  connecting_notification = wstring( tmp );
+  connecting_notification = std::wstring( tmp );
 }
 
 void STMClient::shutdown( void )
 {
   /* Restore screen state */
-  overlays.get_notification_engine().set_notification_string( wstring( L"" ) );
+  overlays.get_notification_engine().set_notification_string( std::wstring( L"" ) );
   overlays.get_notification_engine().server_heard( timestamp() );
-  overlays.set_title_prefix( wstring( L"" ) );
+  overlays.set_title_prefix( std::wstring( L"" ) );
   output_new_frame();
 
   /* Restore terminal and terminal-driver state */
@@ -246,7 +245,7 @@ void STMClient::main_init( void )
   new_state = Terminal::Framebuffer( 1, 1 );
 
   /* initialize screen */
-  string init = display.new_frame( false, local_framebuffer, local_framebuffer );
+  std::string init = display.new_frame( false, local_framebuffer, local_framebuffer );
   swrite( STDOUT_FILENO, init.data(), init.size() );
 
   /* open network */
@@ -277,7 +276,7 @@ void STMClient::output_new_frame( void )
   overlays.apply( new_state );
 
   /* calculate minimal difference from where we are */
-  const string diff( display.new_frame( !repaint_requested,
+  const std::string diff( display.new_frame( !repaint_requested,
 					local_framebuffer,
 					new_state ) );
   swrite( STDOUT_FILENO, diff.data(), diff.size() );
@@ -337,7 +336,7 @@ bool STMClient::process_user_input( int fd )
     if ( quit_sequence_started ) {
       if ( the_byte == '.' ) { /* Quit sequence is Ctrl-^ . */
 	if ( net.has_remote_addr() && (!net.shutdown_in_progress()) ) {
-	  overlays.get_notification_engine().set_notification_string( wstring( L"Exiting on user request..." ), true );
+	  overlays.get_notification_engine().set_notification_string( std::wstring( L"Exiting on user request..." ), true );
 	  net.start_shutdown();
 	  return true;
 	}
@@ -485,7 +484,7 @@ bool STMClient::main( void )
 	if ( !network->has_remote_addr() ) {
 	  break;
 	} else if ( !network->shutdown_in_progress() ) {
-	  overlays.get_notification_engine().set_notification_string( wstring( L"Exiting..." ), true );
+	  overlays.get_notification_engine().set_notification_string( std::wstring( L"Exiting..." ), true );
 	  network->start_shutdown();
 	}
       }
@@ -506,7 +505,7 @@ bool STMClient::main( void )
         if ( !network->has_remote_addr() ) {
           break;
         } else if ( !network->shutdown_in_progress() ) {
-          overlays.get_notification_engine().set_notification_string( wstring( L"Signal received, shutting down..." ), true );
+          overlays.get_notification_engine().set_notification_string( std::wstring( L"Signal received, shutting down..." ), true );
           network->start_shutdown();
         }
       }
@@ -534,7 +533,7 @@ bool STMClient::main( void )
 	   && (timestamp() - network->get_latest_remote_state().timestamp > 250) ) {
 	if ( timestamp() - network->get_latest_remote_state().timestamp > 15000 ) {
 	  if ( !network->shutdown_in_progress() ) {
-	    overlays.get_notification_engine().set_notification_string( wstring( L"Timed out waiting for server..." ), true );
+	    overlays.get_notification_engine().set_notification_string( std::wstring( L"Timed out waiting for server..." ), true );
 	    network->start_shutdown();
 	  }
 	} else {
@@ -548,7 +547,7 @@ bool STMClient::main( void )
 
       network->tick();
 
-      string & send_error = network->get_send_error();
+      std::string & send_error = network->get_send_error();
       if ( !send_error.empty() ) {
         overlays.get_notification_engine().set_network_error( send_error );
 	send_error.clear();
@@ -571,7 +570,7 @@ bool STMClient::main( void )
       } else {
         wchar_t tmp[ 128 ];
         swprintf( tmp, 128, L"Crypto exception: %s", e.what() );
-        overlays.get_notification_engine().set_notification_string( wstring( tmp ) );
+        overlays.get_notification_engine().set_notification_string( std::wstring( tmp ) );
       }
     }
   }

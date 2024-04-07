@@ -34,14 +34,14 @@
    messages, interspersed with some random bad ciphertexts which we need to
    reject. */
 
-#include <stdio.h>
+#include <cstdio>
 
 #define __STDC_FORMAT_MACROS
-#include <inttypes.h>
+#include <cinttypes>
 
-#include "crypto.h"
-#include "prng.h"
-#include "fatal_assert.h"
+#include "src/crypto/crypto.h"
+#include "src/crypto/prng.h"
+#include "src/util/fatal_assert.h"
 #include "test_utils.h"
 
 using namespace Crypto;

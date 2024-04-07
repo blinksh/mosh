@@ -30,21 +30,22 @@
     also delete it here.
 */
 
-#include "config.h"
+#include "src/include/config.h"
 
-#include <errno.h>
-#include <locale.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cerrno>
+#include <climits>
+#include <clocale>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <exception>
+
+#include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
-#include <pwd.h>
-#include <signal.h>
-#include <time.h>
-#include <limits.h>
-#include <exception>
+#include <unistd.h>
 
 #if HAVE_PTY_H
 #include <pty.h>
@@ -52,12 +53,12 @@
 #include <util.h>
 #endif
 
-#include "swrite.h"
-#include "completeterminal.h"
-#include "user.h"
-#include "terminaloverlay.h"
-#include "locale_utils.h"
-#include "fatal_assert.h"
+#include "src/util/swrite.h"
+#include "src/statesync/completeterminal.h"
+#include "src/statesync/user.h"
+#include "src/frontend/terminaloverlay.h"
+#include "src/util/locale_utils.h"
+#include "src/util/fatal_assert.h"
 
 const int ITERATIONS = 100000;
 
@@ -106,9 +107,9 @@ int main( int argc, char **argv )
       overlays.apply( *new_state );
 
       /* calculate minimal difference from where we are */
-      const string diff( display.new_frame( false,
-					    *local_framebuffer,
-					    *new_state ) );
+      const std::string diff( display.new_frame( false,
+						 *local_framebuffer,
+						 *new_state ) );
 
       /* make sure to use diff */
       if ( diff.size() > INT_MAX ) {

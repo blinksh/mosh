@@ -30,16 +30,17 @@
     also delete it here.
 */
 
-#include "config.h"
-#include "version.h"
+#include "src/include/config.h"
+#include "src/include/version.h"
 
-#include <stdlib.h>
+#include <cstdlib>
+
 #include <unistd.h>
 
 #include "stmclient.h"
-#include "crypto.h"
-#include "locale_utils.h"
-#include "fatal_assert.h"
+#include "src/crypto/crypto.h"
+#include "src/util/locale_utils.h"
+#include "src/util/fatal_assert.h"
 
 /* These need to be included last because of conflicting defines. */
 /*
@@ -179,7 +180,7 @@ int main( int argc, char *argv[] )
   char *predict_overwrite = getenv( "MOSH_PREDICTION_OVERWRITE" );
   /* can be NULL */
 
-  string key( env_key );
+  std::string key( env_key );
 
   if ( unsetenv( "MOSH_KEY" ) < 0 ) {
     perror( "unsetenv" );

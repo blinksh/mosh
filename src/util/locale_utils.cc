@@ -30,20 +30,20 @@
     also delete it here.
 */
 
-#include "config.h"
+#include "src/include/config.h"
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <locale.h>
-#include <errno.h>
+#include <cerrno>
+#include <clocale>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 
 #if HAVE_LANGINFO_H
 #include <langinfo.h>
 #endif
 
-#include "locale_utils.h"
+#include "src/util/locale_utils.h"
 
 
 const std::string LocaleVar::str( void ) const

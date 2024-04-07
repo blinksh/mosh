@@ -33,7 +33,7 @@
 /* This is in its own file because otherwise the ncurses #defines
    alias our own variable names. */
 
-#include "config.h"
+#include "src/include/config.h"
 #include "terminaldisplay.h"
 
 #include <string>
@@ -57,8 +57,8 @@
 #else
 #  error "SysV or X/Open-compatible Curses header file required"
 #endif
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 
 using namespace Terminal;
 

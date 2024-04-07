@@ -30,9 +30,9 @@
     also delete it here.
 */
 
-#include <stdio.h>
+#include <cstdio>
 
-#include "locale_utils.h"
+#include "src/util/locale_utils.h"
 
 int main( int argc __attribute__(( unused )), char **argv __attribute__(( unused )))
 {

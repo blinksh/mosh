@@ -33,21 +33,17 @@
 #ifndef TERMINAL_OVERLAY_HPP
 #define TERMINAL_OVERLAY_HPP
 
-#include "terminalframebuffer.h"
-#include "network.h"
-#include "transportsender.h"
-#include "parser.h"
+#include "src/terminal/terminalframebuffer.h"
+#include "src/network/network.h"
+#include "src/network/transportsender.h"
+#include "src/terminal/parser.h"
 
+#include <climits>
 #include <vector>
-#include <limits.h>
 
 namespace Overlay {
   using namespace Terminal;
   using namespace Network;
-  using std::deque;
-  using std::list;
-  using std::vector;
-  using std::wstring;
 
   enum Validity {
     Pending,
@@ -99,8 +95,8 @@ namespace Overlay {
     Cell replacement;
     bool unknown;
 
-    vector<Cell> original_contents; /* we don't give credit for correct predictions
-				       that match the original contents */
+    std::vector<Cell> original_contents; /* we don't give credit for correct predictions
+				            that match the original contents */
 
     void apply( Framebuffer &fb, uint64_t confirmed_epoch, int row, bool flag ) const;
     Validity get_validity( const Framebuffer &fb, int row, uint64_t early_ack, uint64_t late_ack ) const;
@@ -128,7 +124,7 @@ namespace Overlay {
   public:
     int row_num;
 
-    typedef vector<ConditionalOverlayCell> overlay_cells_type;
+    using overlay_cells_type = std::vector<ConditionalOverlayCell>;
     overlay_cells_type overlay_cells;
 
     void apply( Framebuffer &fb, uint64_t confirmed_epoch, bool flag ) const;
@@ -141,8 +137,8 @@ namespace Overlay {
   private:
     uint64_t last_word_from_server;
     uint64_t last_acked_state;
-    string escape_key_string;
-    wstring message;
+    std::string escape_key_string;
+    std::wstring message;
     bool message_is_network_error;
     uint64_t message_expiration;
     bool show_quit_keystroke;
@@ -154,12 +150,12 @@ namespace Overlay {
   public:
     void adjust_message( void );
     void apply( Framebuffer &fb ) const;
-    const wstring &get_notification_string( void ) const { return message; }
+    const std::wstring &get_notification_string( void ) const { return message; }
     void server_heard( uint64_t s_last_word ) { last_word_from_server = s_last_word; }
     void server_acked( uint64_t s_last_acked ) { last_acked_state = s_last_acked; }
     int wait_time( void ) const;
 
-    void set_notification_string( const wstring &s_message, bool permanent = false, bool s_show_quit_keystroke = true )
+    void set_notification_string( const std::wstring &s_message, bool permanent = false, bool s_show_quit_keystroke = true )
     {
       message = s_message;
       if ( permanent ) {
@@ -171,7 +167,7 @@ namespace Overlay {
       show_quit_keystroke = s_show_quit_keystroke;
     }
 
-    void set_escape_key_string( const string &s_name )
+    void set_escape_key_string( const std::string &s_name )
     {
       char tmp[ 128 ];
       snprintf( tmp, sizeof tmp, " [To quit: %s .]", s_name.c_str() );
@@ -215,13 +211,13 @@ namespace Overlay {
     char last_byte;
     Parser::UTF8Parser parser;
 
-    typedef list<ConditionalOverlayRow> overlays_type;
+    using overlays_type = std::list<ConditionalOverlayRow>;
     overlays_type overlays;
 
-    typedef list<ConditionalCursorMove> cursors_type;
+    using cursors_type = std::list<ConditionalCursorMove>;
     cursors_type cursors;
 
-    typedef ConditionalOverlayRow::overlay_cells_type overlay_cells_type;
+    using overlay_cells_type = ConditionalOverlayRow::overlay_cells_type;
 
     uint64_t local_frame_sent, local_frame_acked, local_frame_late_acked;
 
@@ -314,7 +310,7 @@ namespace Overlay {
   public:
     void apply( Framebuffer &fb ) const { fb.prefix_window_title( prefix ); }
     TitleEngine() : prefix() {}
-    void set_prefix( const wstring &s );
+    void set_prefix( const std::wstring &s );
   };
 
   /* the overlay manager */
@@ -330,7 +326,7 @@ namespace Overlay {
     NotificationEngine & get_notification_engine( void ) { return notifications; }
     PredictionEngine & get_prediction_engine( void ) { return predictions; }
 
-    void set_title_prefix( const wstring &s ) { title.set_prefix( s ); }
+    void set_title_prefix( const std::wstring &s ) { title.set_prefix( s ); }
 
     OverlayManager() : notifications(), predictions(), title() {}
 

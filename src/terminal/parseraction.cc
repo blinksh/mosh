@@ -30,11 +30,11 @@
     also delete it here.
 */
 
-#include <stdio.h>
-#include <wctype.h>
+#include <cstdio>
+#include <cwctype>
 
-#include "parseraction.h"
-#include "terminal.h"
+#include "src/terminal/parseraction.h"
+#include "src/terminal/terminal.h"
 
 using namespace Parser;
 

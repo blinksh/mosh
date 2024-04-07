@@ -22,9 +22,9 @@ AS_IF([test x"$PROTOC" = x],
 # automake 1.12 seems to require this, but automake 1.11 doesn't recognize it
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 
-# Protobuf 3.6+ requires C++11.
-AS_IF([pkg-config --atleast-version 3.6.0 protobuf],
-  [AX_CXX_COMPILE_STDCXX([11])])
+# Protobuf transitively requires at least C++14, get ahead of the
+# curve and require at least C++17.
+AX_CXX_COMPILE_STDCXX([17])
 
 WARNING_CXXFLAGS=""
 PICKY_CXXFLAGS=""
@@ -329,7 +329,7 @@ PKG_CHECK_MODULES([TINFO], [tinfo],
         AC_SUBST([TINFO_LIBS], ["$TINFO_LDFLAGS -ltinfo"])],)])])
 
 # Then try to find it in a specific install dir
-AC_ARG_WITH(curses, [AC_HELP_STRING([--with-curses=DIR], [Where curses is installed])],
+AC_ARG_WITH(curses, [AS_HELP_STRING([--with-curses=DIR], [Where curses is installed])],
     [if test $withval != yes; then
         cv_curses=$withval
     fi

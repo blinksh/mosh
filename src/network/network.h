@@ -33,18 +33,19 @@
 #ifndef NETWORK_HPP
 #define NETWORK_HPP
 
-#include <stdint.h>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <deque>
+#include <exception>
+#include <string>
+#include <vector>
+
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <string>
-#include <math.h>
-#include <vector>
-#include <assert.h>
-#include <exception>
-#include <string.h>
 
-#include "crypto.h"
+#include "src/crypto/crypto.h"
 
 using namespace Crypto;
 
@@ -57,12 +58,12 @@ namespace Network {
 
   class NetworkException : public std::exception {
   public:
-    string function;
+    std::string function;
     int the_errno;
   private:
-    string my_what;
+    std::string my_what;
   public:
-    NetworkException( string s_function="<none>", int s_errno=0)
+    NetworkException( std::string s_function="<none>", int s_errno=0)
       : function( s_function ), the_errno( s_errno ),
         my_what(function + ": " + strerror(the_errno)) {}
     const char *what() const throw () { return my_what.c_str(); }
@@ -79,10 +80,10 @@ namespace Network {
     const uint64_t seq;
     Direction direction;
     uint16_t timestamp, timestamp_reply;
-    string payload;
+    std::string payload;
     
     Packet( Direction s_direction,
-	    uint16_t s_timestamp, uint16_t s_timestamp_reply, const string & s_payload )
+	    uint16_t s_timestamp, uint16_t s_timestamp_reply, const std::string & s_payload )
       : seq( Crypto::unique() ), direction( s_direction ),
 	timestamp( s_timestamp ), timestamp_reply( s_timestamp_reply ), payload( s_payload )
     {}
@@ -188,9 +189,9 @@ namespace Network {
     double RTTVAR;
 
     /* Error from send()/sendto(). */
-    string send_error;
+    std::string send_error;
 
-    Packet new_packet( const string &s_payload );
+    Packet new_packet( const std::string &s_payload );
 
     void hop_port( void );
 
@@ -198,7 +199,7 @@ namespace Network {
 
     void prune_sockets( void );
 
-    string recv_one( int sock_to_recv );
+    std::string recv_one( int sock_to_recv );
 
     void set_MTU( int family );
 
@@ -209,13 +210,13 @@ namespace Network {
     Connection( const char *desired_ip, const char *desired_port ); /* server */
     Connection( const char *key_str, const char *ip, const char *port ); /* client */
 
-    void send( const string & s );
-    string recv( void );
+    void send( const std::string & s );
+    std::string recv( void );
     const std::vector< int > fds( void ) const;
     int get_MTU( void ) const { return MTU; }
 
     std::string port( void ) const;
-    string get_key( void ) const { return key.printable_key(); }
+    std::string get_key( void ) const { return key.printable_key(); }
     bool get_has_remote_addr( void ) const { return has_remote_addr; }
 
     uint64_t timeout( void ) const;
@@ -224,7 +225,7 @@ namespace Network {
     const Addr &get_remote_addr( void ) const { return remote_addr; }
     socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }
 
-    string &get_send_error( void )
+    std::string &get_send_error( void )
     {
       return send_error;
     }

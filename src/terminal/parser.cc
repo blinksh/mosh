@@ -30,13 +30,13 @@
     also delete it here.
 */
 
-#include <assert.h>
+#include <cassert>
+#include <cerrno>
+#include <cstdint>
+#include <cwchar>
 #include <typeinfo>
-#include <errno.h>
-#include <wchar.h>
-#include <stdint.h>
 
-#include "parser.h"
+#include "src/terminal/parser.h"
 
 const Parser::StateFamily Parser::family;
 

@@ -33,7 +33,7 @@
 #ifndef BYTEORDER_HPP
 #define BYTEORDER_HPP
 
-#include "config.h"
+#include "src/include/config.h"
 
 #if HAVE_DECL_BE64TOH || HAVE_DECL_BETOH64
 
@@ -60,7 +60,7 @@
 
 /* Use our fallback implementation, which is correct for any endianness. */
 
-#include <stdint.h>
+#include <cstdint>
 
 /* Make sure they aren't macros */
 #undef htobe64

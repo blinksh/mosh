@@ -30,11 +30,11 @@
     also delete it here.
 */
 
-#include <stdio.h>
+#include <cstdio>
 #include <iostream>
 #include <sstream>
 
-#include "crypto.h"
+#include "src/crypto/crypto.h"
 
 using namespace Crypto;
 

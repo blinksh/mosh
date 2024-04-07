@@ -36,11 +36,11 @@
 /* Based on Paul Williams's parser,
    http://www.vt100.net/emu/dec_ansi_parser */
 
-#include <wchar.h>
-#include <string.h>
+#include <cstring>
+#include <cwchar>
 
 #include "parsertransition.h"
-#include "parseraction.h"
+#include "src/terminal/parseraction.h"
 #include "parserstate.h"
 #include "parserstatefamily.h"
 

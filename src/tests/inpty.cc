@@ -30,15 +30,16 @@
     also delete it here.
 */
 
-#include "config.h"
+#include "src/include/config.h"
+
+#include <cerrno>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <errno.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -52,8 +53,8 @@
 #include <libutil.h>
 #endif
 
-#include "pty_compat.h"
-#include "swrite.h"
+#include "src/util/pty_compat.h"
+#include "src/util/swrite.h"
 
 int main( int argc, char *argv[] )
 {
