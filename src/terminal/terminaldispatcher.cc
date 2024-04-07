@@ -51,7 +51,7 @@ Dispatcher::Dispatcher()
 void Dispatcher::newparamchar( const Parser::Param* act )
 {
   assert( act->char_present );
-  assert( ( act->ch == ';' ) || ( ( act->ch >= '0' ) && ( act->ch <= '9' ) ) );
+  assert( ( act->ch == ';' ) || ( act->ch == ':' ) || ( ( act->ch >= '0' ) && ( act->ch <= '9' ) ) );
   if ( params.length() < 100 ) {
     /* enough for 16 five-char params plus 15 semicolons */
     params.push_back( act->ch );
@@ -87,44 +87,53 @@ void Dispatcher::parse_params( void )
 
   while ( 1 ) {
     const char* segment_end = strchr( segment_begin, ';' );
+
+    Param p( 0 );
+
+    bool first = true;
+    bool valid = false;
+    while ( 1 ) {
+      const char* ext_end = strchr( segment_begin, ':' );
+
+      errno = 0;
+      char* endptr;
+      long val = strtol( segment_begin, &endptr, 10 );
+      if ( endptr == segment_begin ) {
+        val = -1;
+      }
+
+      if ( val > PARAM_MAX || errno == ERANGE ) {
+        val = -1;
+        errno = 0;
+      }
+
+      if ( errno == 0 || segment_begin == endptr ) {
+        if ( first ) {
+          p.val = val;
+          valid = true;
+        } else {
+          p.exts.push_back( val );
+        }
+      }
+
+      first = false;
+
+      if ( ext_end == NULL || ( segment_end && ext_end > segment_end ) ) {
+        break;
+      }
+
+      segment_begin = ext_end + 1;
+    }
+
+    if ( valid ) {
+      parsed_params.push_back( p );
+    }
+
     if ( segment_end == NULL ) {
       break;
     }
 
-    errno = 0;
-    char* endptr;
-    long val = strtol( segment_begin, &endptr, 10 );
-    if ( endptr == segment_begin ) {
-      val = -1;
-    }
-
-    if ( val > PARAM_MAX || errno == ERANGE ) {
-      val = -1;
-      errno = 0;
-    }
-
-    if ( errno == 0 || segment_begin == endptr ) {
-      parsed_params.push_back( val );
-    }
-
     segment_begin = segment_end + 1;
-  }
-
-  /* get last param */
-  errno = 0;
-  char* endptr;
-  long val = strtol( segment_begin, &endptr, 10 );
-  if ( endptr == segment_begin ) {
-    val = -1;
-  }
-
-  if ( val > PARAM_MAX || errno == ERANGE ) {
-    val = -1;
-    errno = 0;
-  }
-
-  if ( errno == 0 || segment_begin == endptr ) {
-    parsed_params.push_back( val );
   }
 
   parsed = true;
@@ -132,19 +141,28 @@ void Dispatcher::parse_params( void )
 
 int Dispatcher::getparam( size_t N, int defaultval )
 {
-  int ret = defaultval;
+  return getparamext( N, defaultval ).val;
+}
+
+Dispatcher::Param const& Dispatcher::getparamext( size_t N, int defaultval )
+{
   if ( !parsed ) {
     parse_params();
   }
 
+  static Param notfound( defaultval );
+  notfound.val = defaultval;
+
+  Param* ret = &notfound;
+
   if ( parsed_params.size() > N ) {
-    ret = parsed_params[N];
+    ret = &parsed_params[N];
   }
 
-  if ( ret < 1 )
-    ret = defaultval;
+  if ( ret->val < 1 )
+    ret->val = defaultval;
 
-  return ret;
+  return *ret;
 }
 
 int Dispatcher::param_count( void )

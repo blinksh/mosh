@@ -445,7 +445,7 @@ void DrawState::resize( int s_width, int s_height )
 }
 
 Renditions::Renditions( color_type s_background )
-  : foreground_color( 0 ), background_color( s_background ), attributes( 0 )
+  : foreground_color( 0 ), background_color( s_background ), underline_color( 0 ), attributes( 0 )
 {}
 
 /* This routine cannot be used to set a color beyond the 16-color set. */
@@ -453,7 +453,7 @@ void Renditions::set_rendition( color_type num )
 {
   if ( num == 0 ) {
     clear_attributes();
-    foreground_color = background_color = 0;
+    foreground_color = background_color = underline_color = 0;
     return;
   }
 
@@ -462,6 +462,9 @@ void Renditions::set_rendition( color_type num )
     return;
   } else if ( num == 49 ) {
     background_color = 0;
+    return;
+  } else if ( num == 59 ) {
+    underline_color = 0;
     return;
   }
 
@@ -479,19 +482,33 @@ void Renditions::set_rendition( color_type num )
     return;
   }
 
-  bool value = num < 9;
+  bool value = num < 10;
   switch ( num ) {
     case 1:
+      set_attribute( bold, value );
+      break;
+    case 2:
+      set_attribute( faint, value );
+      break;
     case 22:
       set_attribute( bold, value );
+      set_attribute( faint, value );
       break;
     case 3:
     case 23:
       set_attribute( italic, value );
       break;
     case 4:
+    case 401:
+      set_attribute( underlined, true );
+      break;
     case 24:
-      set_attribute( underlined, value );
+    case 400:
+      set_attribute( underlined, false );
+      set_attribute( underline_double, false );
+      set_attribute( underline_curl, false );
+      set_attribute( underline_dotted, false );
+      set_attribute( underline_dashed, false );
       break;
     case 5:
     case 25:
@@ -504,6 +521,22 @@ void Renditions::set_rendition( color_type num )
     case 8:
     case 28:
       set_attribute( invisible, value );
+      break;
+    case 9:
+    case 29:
+      set_attribute (strikethrough, value);
+      break;
+    case 402:
+      set_attribute( underline_double, true );
+      break;
+    case 403:
+      set_attribute( underline_curl, true );
+      break;
+    case 404:
+      set_attribute( underline_dotted, true );
+      break;
+    case 405:
+      set_attribute( underline_dashed, true );
       break;
     default:
       break; /* ignore unknown rendition */
@@ -528,6 +561,11 @@ void Renditions::set_background_color( int num )
   }
 }
 
+void Renditions::set_underline_color( int num )
+{
+  underline_color = num;
+}
+
 std::string Renditions::sgr( void ) const
 {
   std::string ret;
@@ -536,16 +574,28 @@ std::string Renditions::sgr( void ) const
   ret.append( "\033[0" );
   if ( get_attribute( bold ) )
     ret.append( ";1" );
+  if ( get_attribute( faint ) )
+    ret.append( ";2") ;
   if ( get_attribute( italic ) )
     ret.append( ";3" );
   if ( get_attribute( underlined ) )
     ret.append( ";4" );
+  if ( get_attribute( underline_double ) )
+    ret.append( ";4:2" );
+  if ( get_attribute( underline_curl ) )
+    ret.append( ";4:3" );
+  if ( get_attribute( underline_dotted ) )
+    ret.append( ";4:4" );
+  if ( get_attribute( underline_dashed ) )
+    ret.append( ";4:5" );
   if ( get_attribute( blink ) )
     ret.append( ";5" );
   if ( get_attribute( inverse ) )
     ret.append( ";7" );
   if ( get_attribute( invisible ) )
     ret.append( ";8" );
+  if ( get_attribute( strikethrough ) )
+    ret.append( ";9" );
 
   if ( foreground_color ) {
     // Since foreground_color is a 25-bit field, it is promoted to an int when
@@ -586,6 +636,19 @@ std::string Renditions::sgr( void ) const
       // See comment above about explicit promotion; it applies here as well.
       int bg = background_color;
       snprintf( col, sizeof( col ), ";%d", bg );
+    }
+    ret.append( col );
+  }
+  if ( underline_color ) {
+    if ( is_true_color( underline_color ) ) {
+      snprintf( col,
+                sizeof( col ),
+                ";58:2::%d:%d:%d",
+                ( underline_color >> 16 ) & 0xff,
+                ( underline_color >> 8 ) & 0xff,
+                underline_color & 0xff );
+    } else {
+      snprintf( col, sizeof( col ), ";58:5:%d", underline_color );
     }
     ret.append( col );
   }

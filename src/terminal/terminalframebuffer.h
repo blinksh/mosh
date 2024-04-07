@@ -56,22 +56,29 @@ public:
     faint,
     italic,
     underlined,
+    underline_double,
+    underline_curl,
+    underline_dotted,
+    underline_dashed,
     blink,
     inverse,
     invisible,
+    strikethrough,
     SIZE
   } attribute_type;
 
 private:
   static const uint64_t true_color_mask = 0x1000000;
-  uint64_t foreground_color : 25;
-  uint64_t background_color : 25;
-  uint64_t attributes : 8;
+  uint32_t foreground_color;
+  uint32_t background_color;
+  uint32_t underline_color;
+  uint16_t attributes;
 
 public:
   Renditions( color_type s_background );
   void set_foreground_color( int num );
   void set_background_color( int num );
+  void set_underline_color( int num );
   void set_rendition( color_type num );
   std::string sgr( void ) const;
 
@@ -88,7 +95,7 @@ public:
   bool operator==( const Renditions& x ) const
   {
     return ( attributes == x.attributes ) && ( foreground_color == x.foreground_color )
-           && ( background_color == x.background_color );
+           && ( background_color == x.background_color ) && ( underline_color == x.underline_color );
   }
   void set_attribute( attribute_type attr, bool val )
   {
@@ -334,6 +341,7 @@ public:
 
   void set_foreground_color( int x ) { renditions.set_foreground_color( x ); }
   void set_background_color( int x ) { renditions.set_background_color( x ); }
+  void set_underline_color( int x ) { renditions.set_underline_color( x ); }
   void add_rendition( color_type x ) { renditions.set_rendition( x ); }
   const Renditions& get_renditions( void ) const { return renditions; }
   Renditions& get_renditions( void ) { return renditions; }

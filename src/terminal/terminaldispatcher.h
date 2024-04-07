@@ -89,9 +89,20 @@ DispatchRegistry& get_global_dispatch_registry( void );
 
 class Dispatcher
 {
+public:
+  struct Param
+  {
+    Param( int val ) : val( val ) {}
+
+    int val {};
+    std::vector<int> exts;
+
+    bool operator==( Param const& other ) const { return val == other.val && exts == other.exts; }
+  };
+
 private:
   std::string params;
-  std::vector<int> parsed_params;
+  std::vector<Param> parsed_params;
   bool parsed;
 
   std::string dispatch_chars;
@@ -107,6 +118,7 @@ public:
 
   Dispatcher();
   int getparam( size_t N, int defaultval );
+  Param const& getparamext( size_t N, int defaultval );
   int param_count( void );
 
   void newparamchar( const Parser::Param* act );

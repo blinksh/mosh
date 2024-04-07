@@ -414,7 +414,10 @@ static Function func_Ctrl_BEL( CONTROL, "\x07", Ctrl_BEL );
 static void CSI_SGR( Framebuffer* fb, Dispatcher* dispatch )
 {
   for ( int i = 0; i < dispatch->param_count(); i++ ) {
-    int rendition = dispatch->getparam( i, 0 );
+    Dispatcher::Param const &rendition_param = dispatch->getparamext( i, 0 );
+    int rendition = rendition_param.val;
+    std::vector<int> const &exts = rendition_param.exts;
+
     /* We need to special-case the handling of [34]8 ; 5 ; Ps,
        because Ps of 0 in that case does not mean reset to default, even
        though it means that otherwise (as usually renditions are applied
@@ -437,13 +440,54 @@ static void CSI_SGR( Framebuffer* fb, Dispatcher* dispatch )
 
       color = Renditions::make_true_color( red, green, blue );
 
-      if ( rendition == 38 ) {
-        fb->ds.set_foreground_color( color );
-      } else {
+      ( rendition == 38 ) ?
+        fb->ds.set_foreground_color( color ) :
         fb->ds.set_background_color( color );
-      }
+
       i += 4;
       continue;
+    }
+
+    /* underline color support */
+    if (rendition == 58) {
+      unsigned int color = 0;
+
+      if (exts.size() == 2 && exts[0] == 5) {
+        color = exts[1];
+      }
+      else if (exts.size() >= 4 && exts[0] == 2) {
+        // color space ID _should_ be the first argument after the "2",
+        // but some applications don't put that parameter there.
+        int offset = exts.size() > 4 ? 1 : 0;
+        unsigned int red = exts[1 + offset];
+        unsigned int green = exts[2 + offset];
+        unsigned int blue = exts[3 + offset];
+
+        color = Renditions::make_true_color( red, green, blue );
+      }
+      else if (dispatch->param_count() - i >= 3 &&
+          dispatch->getparam( i+1, -1 ) == 5) {
+        color = dispatch->getparam( i+2, 0 );
+        i += 2;
+      }
+      else if (dispatch->param_count() - i >= 5 &&
+               dispatch->getparam( i+1, -1 ) == 2) {
+        unsigned int red = dispatch->getparam(i+2, 0);
+        unsigned int green = dispatch->getparam(i+3, 0);
+        unsigned int blue = dispatch->getparam(i+4, 0);
+
+        color = Renditions::make_true_color( red, green, blue );
+        i += 4;
+      }
+
+      fb->ds.set_underline_color(color);
+      continue;
+    }
+
+    /* undercurl extension support */
+    if (rendition == 4 && exts.size() > 0) {
+      int style = exts[0];
+      rendition = 400 + style;
     }
 
     fb->ds.add_rendition( rendition );
