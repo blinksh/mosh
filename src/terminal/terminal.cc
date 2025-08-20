@@ -134,6 +134,9 @@ void Emulator::print( const Parser::Print* act )
       }
       if ( !combining_cell->full() ) {
         combining_cell->append( ch );
+        if ( ch == 0xFE0F ) {
+          combining_cell->set_wide( true );
+        }
       }
     } break;
     case -1: /* unprintable character */
